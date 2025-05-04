@@ -1,0 +1,31 @@
+{
+  "name": "com.wallstop-studios.dxstate",
+  "version": "0.0.1-rc01",
+  "displayName": "DxState",
+  "description": "Simple State Management for Unity",
+  "dependencies": {
+    "com.wallstop-studios.unity-helpers": "2.0.0-rc65",
+    "com.wallstop-studios.dxmessaging": "2.0.0-rc26"
+  },
+  "unity": "2021.3",
+  "keywords": [
+    "state",
+    "state machine",
+    "stack",
+    "transition"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wallstop/DxState.git"
+  },
+  "bugs": {
+    "url": "https://github.com/wallstop/DxState/issues"
+  },
+  "author": "wallstop studios <wallstop@wallstopstudios.com> (https://wallstopstudios.com)",
+  "homepage": "https://github.com/wallstop/DxState#readme",
+  "main": "README.md",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}
