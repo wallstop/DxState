@@ -6,41 +6,48 @@
 
     public sealed class StateStackManager : MessageAwareSingleton<StateStackManager>
     {
+        public bool IsTransitioning => _stateStack.IsTransitioning;
+
         private readonly StateStack _stateStack = new();
 
         protected override void Awake()
         {
             base.Awake();
-            _stateStack.StatePopped += (previous, current) =>
+            _stateStack.OnStatePopped += (previous, current) =>
             {
                 StatePoppedMessage message = new(previous, current);
                 message.EmitUntargeted();
             };
-            _stateStack.StatePushed += (previous, current) =>
+            _stateStack.OnStatePushed += (previous, current) =>
             {
                 StatePushedMessage message = new(previous, current);
                 message.EmitUntargeted();
             };
-            _stateStack.TransitionStart += (previous, next) =>
+            _stateStack.OnTransitionStart += (previous, next) =>
             {
                 TransitionStartMessage message = new(previous, next);
                 message.EmitUntargeted();
             };
-            _stateStack.TransitionComplete += (previous, current) =>
+            _stateStack.OnTransitionComplete += (previous, current) =>
             {
                 TransitionCompleteMessage message = new(previous, current);
                 message.EmitUntargeted();
             };
-            _stateStack.Flattened += target =>
+            _stateStack.OnFlattened += target =>
             {
                 StateStackFlattenedMessage message = new(target);
                 message.EmitUntargeted();
             };
-            _stateStack.HistoryRemoved += (removed, target) =>
+            _stateStack.OnHistoryRemoved += (removed, target) =>
             {
                 StateStackHistoryRemovedMessage message = new(removed, target);
                 message.EmitUntargeted();
             };
+        }
+
+        public async ValueTask WaitForTransitionCompletionAsync()
+        {
+            await _stateStack.WaitForTransitionCompletionAsync();
         }
 
         public bool TryRegister(IState state, bool force = false)

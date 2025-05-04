@@ -8,21 +8,38 @@
 
     public sealed class StateStack
     {
+        public bool IsTransitioning => _isTransitioning;
+
+        // ReSharper disable once MemberCanBePrivate.Global
         public IState CurrentState => 0 < _stack.Count ? _stack[^1] : null;
 
-        private IState PreviousState => 1 < _stack.Count ? _stack[^2] : null;
+        // ReSharper disable once MemberCanBePrivate.Global
+        public IState PreviousState => 1 < _stack.Count ? _stack[^2] : null;
 
-        public event Action<IState, IState> StatePushed;
-        public event Action<IState, IState> StatePopped;
-        public event Action<IState, IState> TransitionStart;
-        public event Action<IState, IState> TransitionComplete;
-        public event Action<IState> Flattened;
-        public event Action<List<IState>, IState> HistoryRemoved;
+        public event Action<IState, IState> OnStatePushed;
+        public event Action<IState, IState> OnStatePopped;
+        public event Action<IState, IState> OnTransitionStart;
+        public event Action<IState, IState> OnTransitionComplete;
+        public event Action<IState> OnFlattened;
+        public event Action<List<IState>, IState> OnHistoryRemoved;
 
         private readonly List<IState> _stack = new();
         private readonly Dictionary<string, IState> _statesByName = new(StringComparer.Ordinal);
+        private TaskCompletionSource<bool> _transitionWaiter;
 
         private bool _isTransitioning;
+
+        public ValueTask WaitForTransitionCompletionAsync()
+        {
+            if (!_isTransitioning)
+            {
+                return new ValueTask();
+            }
+            _transitionWaiter ??= new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously
+            );
+            return new ValueTask(_transitionWaiter.Task);
+        }
 
         public bool TryRegister(IState state, bool force = false)
         {
@@ -73,7 +90,7 @@
 
                     _stack.Add(newState);
                     await newState.Enter(previousState);
-                    StatePushed?.Invoke(previousState, newState);
+                    OnStatePushed?.Invoke(previousState, newState);
                 },
                 newState
             );
@@ -105,7 +122,7 @@
                     IState stateToPop = CurrentState;
                     await stateToPop.Exit(nextState);
                     _stack.RemoveAt(_stack.Count - 1);
-                    StatePopped?.Invoke(stateToPop, nextState);
+                    OnStatePopped?.Invoke(stateToPop, nextState);
                     if (nextState != null)
                     {
                         await nextState.Enter(stateToPop);
@@ -149,7 +166,7 @@
                 },
                 state
             );
-            Flattened?.Invoke(state);
+            OnFlattened?.Invoke(state);
         }
 
         public async ValueTask FlattenAsync(string stateName)
@@ -197,7 +214,7 @@
             {
                 List<IState> removed = _stack.GetRange(0, targetIndex);
                 _stack.RemoveRange(0, targetIndex);
-                HistoryRemoved?.Invoke(removed, state);
+                OnHistoryRemoved?.Invoke(removed, state);
             }
         }
 
@@ -224,7 +241,7 @@
                         IState nextState = PreviousState;
                         await stateToExit.Exit(nextState);
                         _stack.RemoveAt(_stack.Count - 1);
-                        StatePopped?.Invoke(stateToExit, nextState);
+                        OnStatePopped?.Invoke(stateToExit, nextState);
                     }
                 },
                 null
@@ -276,17 +293,20 @@
                     "Cannot perform transition while state stack is already transitioning"
                 );
             }
+
             _isTransitioning = true;
             try
             {
                 IState current = CurrentState;
-                TransitionStart?.Invoke(current, targetState);
+                OnTransitionStart?.Invoke(current, targetState);
                 await transitionAction();
-                TransitionComplete?.Invoke(current, CurrentState);
+                OnTransitionComplete?.Invoke(current, CurrentState);
             }
             finally
             {
                 _isTransitioning = false;
+                _transitionWaiter?.TrySetResult(true);
+                _transitionWaiter = null;
             }
         }
     }
