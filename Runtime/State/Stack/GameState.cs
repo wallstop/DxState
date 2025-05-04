@@ -3,7 +3,7 @@
     using System.Threading.Tasks;
     using UnityEngine;
 
-    public abstract class GameState : MonoBehaviour, IState
+    public abstract class GameState : SerializedMessageAwareComponent, IState
     {
         public virtual TickMode TickMode => TickMode.None;
 
@@ -30,10 +30,6 @@
             _stateEnteredTime = -1;
             return new ValueTask();
         }
-
-        public virtual void Pause() { }
-
-        public virtual void Resume() { }
 
         protected virtual void OnValidate()
         {

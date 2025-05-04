@@ -1,7 +1,10 @@
 {
     "name": "WallstopStudios.DxState",
     "rootNamespace": "WallstopStudios.DxState",
-    "references": [],
+    "references": [
+        "WallstopStudios.UnityHelpers",
+        "WallstopStudios.DxMessaging"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

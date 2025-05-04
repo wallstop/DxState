@@ -3,20 +3,16 @@
     using System.Threading.Tasks;
     using UnityEngine;
     using UnityEngine.SceneManagement;
+    using UnityHelpers.Core.Extension;
 
     public class SceneState : GameState
     {
         [SerializeField]
         protected Scene _scene;
 
-        public override ValueTask Enter(IState previousState)
+        public override async ValueTask Enter(IState previousState)
         {
-            return base.Enter(previousState);
-        }
-
-        public override ValueTask Exit(IState nextState)
-        {
-            return base.Exit(nextState);
+            await SceneManager.LoadSceneAsync(_scene.name);
         }
     }
 }

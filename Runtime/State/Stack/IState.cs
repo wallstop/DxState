@@ -7,13 +7,11 @@
         string Name { get; }
 
         TickMode TickMode => TickMode.None;
+        float? TimeInState { get; }
         bool TickWhenInactive => false;
 
         ValueTask Enter(IState previousState);
         void Tick(TickMode mode, float delta);
         ValueTask Exit(IState nextState);
-
-        void Pause();
-        void Resume();
     }
 }

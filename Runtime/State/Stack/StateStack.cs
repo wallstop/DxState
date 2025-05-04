@@ -4,6 +4,7 @@
     using System.Collections.Generic;
     using System.Threading.Tasks;
     using UnityEngine;
+    using UnityHelpers.Core.Extension;
 
     public sealed class StateStack
     {
@@ -13,7 +14,10 @@
 
         public event Action<IState, IState> StatePushed;
         public event Action<IState, IState> StatePopped;
+        public event Action<IState, IState> TransitionStart;
         public event Action<IState, IState> TransitionComplete;
+        public event Action<IState> Flattened;
+        public event Action<List<IState>, IState> HistoryRemoved;
 
         private readonly List<IState> _stack = new();
         private readonly Dictionary<string, IState> _statesByName = new(StringComparer.Ordinal);
@@ -54,25 +58,35 @@
                 return;
             }
 
-            await PerformTransition(async () =>
-            {
-                IState previousState = CurrentState;
-                if (previousState != null)
+            await PerformTransition(
+                async () =>
                 {
-                    await previousState.Exit(newState);
-                }
+                    IState previousState = CurrentState;
+                    if (previousState == newState)
+                    {
+                        return;
+                    }
+                    if (previousState != null)
+                    {
+                        await previousState.Exit(newState);
+                    }
 
-                _stack.Add(newState);
-                await newState.Enter(previousState);
-                StatePushed?.Invoke(previousState, newState);
-            });
+                    _stack.Add(newState);
+                    await newState.Enter(previousState);
+                    StatePushed?.Invoke(previousState, newState);
+                },
+                newState
+            );
         }
 
         public async ValueTask PushAsync(string stateName)
         {
             if (!_statesByName.TryGetValue(stateName, out IState state))
             {
-                throw new ArgumentException($"State with name {stateName} does not exist");
+                throw new ArgumentException(
+                    $"State with name {stateName} does not exist",
+                    nameof(stateName)
+                );
             }
             await PushAsync(state);
         }
@@ -84,18 +98,21 @@
                 throw new InvalidOperationException("Cannot pop from an empty stack.");
             }
 
-            await PerformTransition(async () =>
-            {
-                IState stateToPop = CurrentState;
-                IState nextState = PreviousState;
-                await stateToPop.Exit(nextState);
-                _stack.RemoveAt(_stack.Count - 1);
-                StatePopped?.Invoke(stateToPop, nextState);
-                if (nextState != null)
+            IState nextState = PreviousState;
+            await PerformTransition(
+                async () =>
                 {
-                    await nextState.Enter(stateToPop);
-                }
-            });
+                    IState stateToPop = CurrentState;
+                    await stateToPop.Exit(nextState);
+                    _stack.RemoveAt(_stack.Count - 1);
+                    StatePopped?.Invoke(stateToPop, nextState);
+                    if (nextState != null)
+                    {
+                        await nextState.Enter(stateToPop);
+                    }
+                },
+                nextState
+            );
         }
 
         public async ValueTask FlattenAsync(IState state)
@@ -105,30 +122,34 @@
                 throw new ArgumentNullException(nameof(state));
             }
             _ = TryRegister(state);
-            await PerformTransition(async () =>
-            {
-                bool targetWasAlreadyActive = CurrentState == state && _stack.Count == 1;
-                while (_stack.Count > 0)
+            await PerformTransition(
+                async () =>
                 {
-                    IState stateToExit = CurrentState;
-                    if (stateToExit == state && _stack.Count == 1)
+                    bool targetWasAlreadyActive = CurrentState == state && _stack.Count == 1;
+                    while (_stack.Count > 0)
                     {
-                        break;
+                        IState stateToExit = CurrentState;
+                        if (stateToExit == state && _stack.Count == 1)
+                        {
+                            break;
+                        }
+
+                        await stateToExit.Exit(PreviousState);
+                        _stack.RemoveAt(_stack.Count - 1);
                     }
 
-                    await stateToExit.Exit(PreviousState);
-                    _stack.RemoveAt(_stack.Count - 1);
-                }
-
-                if (_stack.Count == 0)
-                {
-                    _stack.Add(state);
-                    if (!targetWasAlreadyActive)
+                    if (_stack.Count == 0)
                     {
-                        await state.Enter(PreviousState);
+                        _stack.Add(state);
+                        if (!targetWasAlreadyActive)
+                        {
+                            await state.Enter(PreviousState);
+                        }
                     }
-                }
-            });
+                },
+                state
+            );
+            Flattened?.Invoke(state);
         }
 
         public async ValueTask FlattenAsync(string stateName)
@@ -140,11 +161,18 @@
             await FlattenAsync(state);
         }
 
-        public void RemoveHistoryAsync(IState state)
+        public void RemoveHistory(IState state)
         {
             if (state == null)
             {
                 throw new ArgumentNullException(nameof(state));
+            }
+
+            if (_isTransitioning)
+            {
+                throw new InvalidOperationException(
+                    "Cannot remove history while state stack is transitioning."
+                );
             }
 
             int targetIndex = -1;
@@ -167,58 +195,92 @@
 
             if (targetIndex != 0)
             {
+                List<IState> removed = _stack.GetRange(0, targetIndex);
                 _stack.RemoveRange(0, targetIndex);
+                HistoryRemoved?.Invoke(removed, state);
             }
+        }
+
+        public void RemoveHistory(string stateName)
+        {
+            if (!_statesByName.TryGetValue(stateName, out IState state))
+            {
+                throw new ArgumentException(
+                    $"State with name {stateName} does not exist",
+                    nameof(stateName)
+                );
+            }
+            RemoveHistory(state);
         }
 
         public async ValueTask ClearAsync()
         {
-            await PerformTransition(async () =>
-            {
-                while (_stack.Count > 0)
+            await PerformTransition(
+                async () =>
                 {
-                    IState stateToExit = CurrentState;
-                    IState nextState = PreviousState;
-                    await stateToExit.Exit(nextState);
-                    _stack.RemoveAt(_stack.Count - 1);
-                    StatePopped?.Invoke(stateToExit, nextState);
-                }
-            });
+                    while (_stack.Count > 0)
+                    {
+                        IState stateToExit = CurrentState;
+                        IState nextState = PreviousState;
+                        await stateToExit.Exit(nextState);
+                        _stack.RemoveAt(_stack.Count - 1);
+                        StatePopped?.Invoke(stateToExit, nextState);
+                    }
+                },
+                null
+            );
         }
 
         public void Update()
         {
-            IState current = CurrentState;
-            if (current is { TickMode: TickMode.Update } && !_isTransitioning)
-            {
-                current.Tick(TickMode.Update, Time.deltaTime);
-            }
+            PerformUpdate(TickMode.Update);
         }
 
         public void FixedUpdate()
         {
-            IState current = CurrentState;
-            if (current is { TickMode: TickMode.FixedUpdate } && !_isTransitioning)
-            {
-                current.Tick(TickMode.FixedUpdate, Time.fixedDeltaTime);
-            }
+            PerformUpdate(TickMode.FixedUpdate);
         }
 
         public void LateUpdate()
         {
-            IState current = CurrentState;
-            if (current is { TickMode: TickMode.LateUpdate } && !_isTransitioning)
-            {
-                current.Tick(TickMode.LateUpdate, Time.deltaTime);
-            }
+            PerformUpdate(TickMode.LateUpdate);
         }
 
-        private async ValueTask PerformTransition(Func<ValueTask> transitionAction)
+        private void PerformUpdate(TickMode tickMode)
         {
+            if (_isTransitioning)
+            {
+                return;
+            }
+
+            IState current = CurrentState;
+            if (current == null)
+            {
+                return;
+            }
+            if (!current.TickMode.HasFlagNoAlloc(tickMode))
+            {
+                return;
+            }
+            current.Tick(tickMode, Time.fixedDeltaTime);
+        }
+
+        private async ValueTask PerformTransition(
+            Func<ValueTask> transitionAction,
+            IState targetState
+        )
+        {
+            if (_isTransitioning)
+            {
+                throw new InvalidOperationException(
+                    "Cannot perform transition while state stack is already transitioning"
+                );
+            }
             _isTransitioning = true;
             try
             {
                 IState current = CurrentState;
+                TransitionStart?.Invoke(current, targetState);
                 await transitionAction();
                 TransitionComplete?.Invoke(current, CurrentState);
             }
