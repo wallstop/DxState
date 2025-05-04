@@ -15,7 +15,7 @@
         SceneName = 2,
     }
 
-    public class SceneState : GameState
+    public class ComponentSceneState : GameState
     {
         [Header("Scene Selection")]
         [SerializeField]
