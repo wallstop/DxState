@@ -1,5 +1,6 @@
 ﻿namespace WallstopStudios.DxState.State.Stack.Components
 {
+    using System.Collections.Generic;
     using System.Threading.Tasks;
     using global::DxMessaging.Core.Extensions;
     using Messages;
@@ -7,6 +8,11 @@
     public sealed class StateStackManager : MessageAwareSingleton<StateStackManager>
     {
         public bool IsTransitioning => _stateStack.IsTransitioning;
+
+        public IState CurrentState => _stateStack.CurrentState;
+        public IState PreviousState => _stateStack.PreviousState;
+        public IReadOnlyDictionary<string, IState> RegisteredStates => _stateStack.RegisteredStates;
+        public IReadOnlyList<IState> Stack => _stateStack.Stack;
 
         private readonly StateStack _stateStack = new();
 
@@ -45,6 +51,11 @@
             };
         }
 
+        public int CountOf(IState state)
+        {
+            return _stateStack.CountOf(state);
+        }
+
         public async ValueTask WaitForTransitionCompletionAsync()
         {
             await _stateStack.WaitForTransitionCompletionAsync();
@@ -75,9 +86,14 @@
             await _stateStack.PushAsync(stateName);
         }
 
-        public async ValueTask PopAsync()
+        public async ValueTask<IState> PopAsync()
         {
-            await _stateStack.PopAsync();
+            return await _stateStack.PopAsync();
+        }
+
+        public async ValueTask<IState> TryPopAsync()
+        {
+            return await _stateStack.TryPopAsync();
         }
 
         public async ValueTask FlattenAsync(IState state)
