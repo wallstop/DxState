@@ -125,7 +125,7 @@
                     OnStatePopped?.Invoke(stateToPop, nextState);
                     if (nextState != null)
                     {
-                        await nextState.Enter(stateToPop);
+                        await nextState.RevertFrom(stateToPop);
                     }
                 },
                 nextState
@@ -151,8 +151,13 @@
                             break;
                         }
 
-                        await stateToExit.Exit(PreviousState);
+                        IState previousState = PreviousState;
+                        await stateToExit.Exit(previousState);
                         _stack.RemoveAt(_stack.Count - 1);
+                        if (previousState != null)
+                        {
+                            await previousState.RevertFrom(stateToExit);
+                        }
                     }
 
                     if (_stack.Count == 0)

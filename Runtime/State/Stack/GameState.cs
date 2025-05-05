@@ -19,7 +19,7 @@
 
         public virtual ValueTask Enter(IState previousState)
         {
-            _stateEnteredTime = 0;
+            _stateEnteredTime = Time.time;
             return new ValueTask();
         }
 
@@ -28,6 +28,12 @@
         public virtual ValueTask Exit(IState nextState)
         {
             _stateEnteredTime = -1;
+            return new ValueTask();
+        }
+
+        public virtual ValueTask RevertFrom(IState previousState)
+        {
+            _stateEnteredTime = Time.time;
             return new ValueTask();
         }
 

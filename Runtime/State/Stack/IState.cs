@@ -13,5 +13,8 @@
         ValueTask Enter(IState previousState);
         void Tick(TickMode mode, float delta);
         ValueTask Exit(IState nextState);
+        ValueTask RevertFrom(IState previousState);
+
+        // TODO: Add removal hooks (for RemoveHistory)
     }
 }

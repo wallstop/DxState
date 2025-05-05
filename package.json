@@ -1,6 +1,6 @@
 {
   "name": "com.wallstop-studios.dxstate",
-  "version": "0.0.1-rc05",
+  "version": "0.0.1-rc06",
   "displayName": "DxState",
   "description": "Simple State Management for Unity",
   "dependencies": {
