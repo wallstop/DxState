@@ -3,10 +3,11 @@
     using System;
     using System.ComponentModel;
     using System.Threading.Tasks;
+    using Extensions;
     using UnityEngine;
     using UnityEngine.SceneManagement;
-    using UnityHelpers.Core.Extension;
 
+    // TODO: Make serializable
     public sealed class SceneState : IState
     {
         public string Name { get; set; }
@@ -39,26 +40,31 @@
             RevertOnRemoval = revertOnRemoval;
         }
 
-        public async ValueTask Enter(IState previousState)
+        public async ValueTask Enter<TProgress>(IState previousState, TProgress progress)
+            where TProgress : IProgress<float>
         {
+            _timeEntered = Time.time;
             string name = Name;
             if (string.IsNullOrEmpty(name))
             {
                 throw new ArgumentException($"Scene name cannot be null/empty", nameof(name));
             }
 
-            _timeEntered = Time.time;
             SceneTransitionMode transitionMode = TransitionMode;
             switch (transitionMode)
             {
                 case SceneTransitionMode.Addition:
                 {
-                    await SceneManager.LoadSceneAsync(name, LoadSceneParameters);
+                    await SceneManager
+                        .LoadSceneAsync(name, LoadSceneParameters)
+                        .AwaitWithProgress(progress);
                     return;
                 }
                 case SceneTransitionMode.Removal:
                 {
-                    await SceneManager.UnloadSceneAsync(name, UnloadSceneOptions);
+                    await SceneManager
+                        .UnloadSceneAsync(name, UnloadSceneOptions)
+                        .AwaitWithProgress(progress);
                     return;
                 }
                 default:
@@ -74,14 +80,17 @@
 
         public void Tick(TickMode mode, float delta) { }
 
-        public ValueTask Exit(IState nextState)
+        public ValueTask Exit<TProgress>(IState nextState, TProgress progress)
+            where TProgress : IProgress<float>
         {
             _timeEntered = -1;
             return new ValueTask();
         }
 
-        public async ValueTask RevertFrom(IState previousState)
+        public async ValueTask RevertFrom<TProgress>(IState previousState, TProgress progress)
+            where TProgress : IProgress<float>
         {
+            _timeEntered = Time.time;
             if (!RevertOnRemoval)
             {
                 return;
@@ -93,18 +102,21 @@
                 throw new ArgumentException($"Scene name cannot be null/empty", nameof(name));
             }
 
-            _timeEntered = Time.time;
             SceneTransitionMode transitionMode = TransitionMode;
             switch (transitionMode)
             {
                 case SceneTransitionMode.Removal:
                 {
-                    await SceneManager.LoadSceneAsync(name, LoadSceneParameters);
+                    await SceneManager
+                        .LoadSceneAsync(name, LoadSceneParameters)
+                        .AwaitWithProgress(progress);
                     return;
                 }
                 case SceneTransitionMode.Addition:
                 {
-                    await SceneManager.UnloadSceneAsync(name, UnloadSceneOptions);
+                    await SceneManager
+                        .UnloadSceneAsync(name, UnloadSceneOptions)
+                        .AwaitWithProgress(progress);
                     return;
                 }
                 default:

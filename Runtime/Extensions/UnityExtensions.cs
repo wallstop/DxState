@@ -1,0 +1,29 @@
+﻿namespace WallstopStudios.DxState.Extensions
+{
+    using System;
+    using System.Threading.Tasks;
+
+    public static class UnityExtensions
+    {
+        public static async ValueTask AwaitWithProgress<TProgress>(
+            this UnityEngine.AsyncOperation operation,
+            TProgress progressReporter
+        )
+            where TProgress : IProgress<float>
+        {
+            if (operation == null)
+            {
+                progressReporter?.Report(1f);
+                return;
+            }
+
+            progressReporter?.Report(operation.progress);
+            while (!operation.isDone)
+            {
+                progressReporter?.Report(operation.progress);
+                await Task.Yield();
+            }
+            progressReporter?.Report(operation.progress);
+        }
+    }
+}

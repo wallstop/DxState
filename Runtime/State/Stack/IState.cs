@@ -1,5 +1,6 @@
 ﻿namespace WallstopStudios.DxState.State.Stack
 {
+    using System;
     using System.Threading.Tasks;
 
     public interface IState
@@ -10,10 +11,13 @@
         float? TimeInState { get; }
         bool TickWhenInactive => false;
 
-        ValueTask Enter(IState previousState);
+        ValueTask Enter<TProgress>(IState previousState, TProgress progress)
+            where TProgress : IProgress<float>;
         void Tick(TickMode mode, float delta);
-        ValueTask Exit(IState nextState);
-        ValueTask RevertFrom(IState previousState);
+        ValueTask Exit<TProgress>(IState nextState, TProgress progress)
+            where TProgress : IProgress<float>;
+        ValueTask RevertFrom<TProgress>(IState previousState, TProgress progress)
+            where TProgress : IProgress<float>;
 
         // TODO: Add removal hooks (for RemoveHistory)
     }
