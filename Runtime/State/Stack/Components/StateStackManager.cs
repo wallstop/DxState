@@ -49,6 +49,11 @@
                 StateStackHistoryRemovedMessage message = new(removed, target);
                 message.EmitUntargeted();
             };
+            _stateStack.OnTransitionProgress += (state, progress) =>
+            {
+                TransitionProgressChangedMessage message = new(state, progress);
+                message.EmitUntargeted();
+            };
         }
 
         public int CountOf(IState state)

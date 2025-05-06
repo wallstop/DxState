@@ -4,14 +4,16 @@
     using System.Collections.Generic;
     using System.Linq;
     using UnityHelpers.Core.Attributes;
+    using UnityHelpers.Core.Extension;
     using UnityHelpers.Tags;
-    using UnityHelpers.Utils;
 #if ODIN_INSPECTOR
     using Sirenix.OdinInspector;
 #endif
 
     [Serializable]
-    public abstract class StateComponent : SerializedMessageAwareComponent
+    public abstract class StateComponent
+        : SerializedMessageAwareComponent,
+            IStateContext<StateComponent>
     {
 #if ODIN_INSPECTOR
         [ShowInInspector]
@@ -22,7 +24,7 @@
             private set => _isActive = value;
         }
 
-        public ComponentStateMachine StateMachine { get; set; }
+        public StateMachine<StateComponent> StateMachine { get; set; }
 
 #if ODIN_INSPECTOR
         [ShowInInspector]
@@ -72,6 +74,11 @@
 
             IsActive = false;
             OnExit();
+        }
+
+        public virtual void Log(FormattableString message)
+        {
+            LoggingExtensions.Log(this, message);
         }
 
         protected virtual void OnEnter()

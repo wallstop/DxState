@@ -24,7 +24,7 @@ namespace WallstopStudios.DxState.State.Stack
         public event Action<IState, IState> OnStatePopped;
         public event Action<IState, IState> OnTransitionStart;
         public event Action<IState, IState> OnTransitionComplete;
-        public event Action<float> OnTransitionProgressReported;
+        public event Action<IState, float> OnTransitionProgress;
 
         public event Action<IState> OnFlattened;
         public event Action<List<IState>, IState> OnHistoryRemoved;
@@ -46,7 +46,7 @@ namespace WallstopStudios.DxState.State.Stack
         public StateStack()
         {
             _masterProgress = new Progress<float>(value =>
-                OnTransitionProgressReported?.Invoke(value)
+                OnTransitionProgress?.Invoke(CurrentState, value)
             );
             _noOpProgress = new Progress<float>(_ => { });
             _push = InternalPushAsync;
