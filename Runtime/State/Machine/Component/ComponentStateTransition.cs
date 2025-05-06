@@ -4,7 +4,11 @@
 
     public sealed class ComponentStateTransition : Transition<StateComponent>
     {
-        public ComponentStateTransition(StateComponent from, StateComponent to, Func<bool> rule)
+        public ComponentStateTransition(
+            StateComponent from,
+            StateComponent to,
+            Func<bool> rule = null
+        )
             : base(from, to, rule != null ? () => rule() && to.ShouldEnter() : to.ShouldEnter) { }
     }
 }

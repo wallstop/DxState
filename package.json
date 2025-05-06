@@ -1,6 +1,6 @@
 {
   "name": "com.wallstop-studios.dxstate",
-  "version": "0.0.1-rc09.1",
+  "version": "0.0.1-rc09.2",
   "displayName": "DxState",
   "description": "Simple State Management for Unity",
   "dependencies": {
@@ -29,5 +29,6 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   }
 }
+
 
 
