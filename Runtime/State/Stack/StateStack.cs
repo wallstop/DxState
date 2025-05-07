@@ -14,6 +14,8 @@
 
         public IState PreviousState => 1 < _stack.Count ? _stack[^2] : null;
 
+        public float Progress => _latestProgress;
+
         public IReadOnlyDictionary<string, IState> RegisteredStates => _statesByName;
         public IReadOnlyList<IState> Stack => _stack;
 
@@ -38,12 +40,14 @@
         private readonly Func<IState, IProgress<float>, ValueTask> _removeInternalAction;
 
         private bool _isTransitioning;
+        private float _latestProgress = 1f;
 
         public StateStack()
         {
             _masterProgress = new Progress<float>(value =>
                 OnTransitionProgress?.Invoke(CurrentState, value)
             );
+            OnTransitionProgress += (_, progress) => _latestProgress = progress;
             _noOpProgress = new Progress<float>(_ => { });
             _push = InternalPushAsync;
             _pop = InternalPopAsync;

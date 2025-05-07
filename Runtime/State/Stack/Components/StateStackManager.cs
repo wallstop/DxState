@@ -11,6 +11,8 @@
 
         public IState CurrentState => _stateStack.CurrentState;
         public IState PreviousState => _stateStack.PreviousState;
+
+        public float Progress => _stateStack.Progress;
         public IReadOnlyDictionary<string, IState> RegisteredStates => _stateStack.RegisteredStates;
         public IReadOnlyList<IState> Stack => _stateStack.Stack;
 
