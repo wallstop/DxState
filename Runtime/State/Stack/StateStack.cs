@@ -1,5 +1,4 @@
-﻿// ReSharper disable ForeachCanBeConvertedToQueryUsingAnotherGetEnumerator
-namespace WallstopStudios.DxState.State.Stack
+﻿namespace WallstopStudios.DxState.State.Stack
 {
     using System;
     using System.Collections.Generic;
@@ -11,10 +10,8 @@ namespace WallstopStudios.DxState.State.Stack
     {
         public bool IsTransitioning => _isTransitioning;
 
-        // ReSharper disable once MemberCanBePrivate.Global
         public IState CurrentState => 0 < _stack.Count ? _stack[^1] : null;
 
-        // ReSharper disable once MemberCanBePrivate.Global
         public IState PreviousState => 1 < _stack.Count ? _stack[^2] : null;
 
         public IReadOnlyDictionary<string, IState> RegisteredStates => _statesByName;
@@ -25,9 +22,8 @@ namespace WallstopStudios.DxState.State.Stack
         public event Action<IState, IState> OnTransitionStart;
         public event Action<IState, IState> OnTransitionComplete;
         public event Action<IState, float> OnTransitionProgress;
-
+        public event Action<IState> OnStateManuallyRemoved;
         public event Action<IState> OnFlattened;
-        public event Action<List<IState>, IState> OnHistoryRemoved;
 
         private readonly List<IState> _stack = new();
         private readonly Dictionary<string, IState> _statesByName = new(StringComparer.Ordinal);
@@ -35,11 +31,11 @@ namespace WallstopStudios.DxState.State.Stack
         private readonly Progress<float> _noOpProgress;
         private TaskCompletionSource<bool> _transitionWaiter;
 
-        // Cached to avoid allocations
         private readonly Func<IState, IProgress<float>, ValueTask> _push;
         private readonly Func<IState, IProgress<float>, ValueTask> _pop;
         private readonly Func<IState, IProgress<float>, ValueTask> _flatten;
         private readonly Func<bool, IProgress<float>, ValueTask> _clear;
+        private readonly Func<IState, IProgress<float>, ValueTask> _removeInternalAction;
 
         private bool _isTransitioning;
 
@@ -53,6 +49,7 @@ namespace WallstopStudios.DxState.State.Stack
             _pop = InternalPopAsync;
             _flatten = InternalFlattenAsync;
             _clear = InternalClearAsync;
+            _removeInternalAction = InternalRemoveAsync;
         }
 
         public int CountOf(IState state)
@@ -132,6 +129,7 @@ namespace WallstopStudios.DxState.State.Stack
 
         private async ValueTask InternalPushAsync(IState newState, IProgress<float> overallProgress)
         {
+            const StateDirection direction = StateDirection.Forward;
             IState previousState = CurrentState;
             if (previousState == newState)
             {
@@ -141,7 +139,7 @@ namespace WallstopStudios.DxState.State.Stack
             if (previousState != null)
             {
                 ScopedProgress exitProgress = new(overallProgress, 0f, 0.5f);
-                await previousState.Exit(newState, exitProgress);
+                await previousState.Exit(newState, exitProgress, direction);
             }
             else
             {
@@ -150,7 +148,7 @@ namespace WallstopStudios.DxState.State.Stack
 
             _stack.Add(newState);
             ScopedProgress enterProgress = new(overallProgress, 0.5f, 0.5f);
-            await newState.Enter(previousState, enterProgress);
+            await newState.Enter(previousState, enterProgress, direction);
             OnStatePushed?.Invoke(previousState, newState);
         }
 
@@ -179,15 +177,16 @@ namespace WallstopStudios.DxState.State.Stack
 
         private async ValueTask InternalPopAsync(IState nextState, IProgress<float> overallProgress)
         {
+            const StateDirection direction = StateDirection.Backward;
             IState stateToPop = CurrentState;
             ScopedProgress exitProgress = new(overallProgress, 0f, 0.5f);
-            await stateToPop.Exit(nextState, exitProgress);
+            await stateToPop.Exit(nextState, exitProgress, direction);
             _stack.RemoveAt(_stack.Count - 1);
             OnStatePopped?.Invoke(stateToPop, nextState);
             if (nextState != null)
             {
                 ScopedProgress revertProgress = new(overallProgress, 0.5f, 0.5f);
-                await nextState.RevertFrom(stateToPop, revertProgress);
+                await nextState.Enter(stateToPop, revertProgress, direction);
             }
             else
             {
@@ -224,6 +223,7 @@ namespace WallstopStudios.DxState.State.Stack
             bool targetWasAlreadyActive = CurrentState == state && _stack.Count == 1;
             while (_stack.Count > 0)
             {
+                const StateDirection direction = StateDirection.Backward;
                 IState stateToExit = CurrentState;
                 if (stateToExit == state && _stack.Count == 1)
                 {
@@ -242,12 +242,12 @@ namespace WallstopStudios.DxState.State.Stack
                     progressScaleForThisExit
                 );
 
-                await stateToExit.Exit(previousState, exitProgress);
+                await stateToExit.Exit(previousState, exitProgress, direction);
                 _stack.RemoveAt(_stack.Count - 1);
                 statesExited++;
                 if (previousState != null)
                 {
-                    await previousState.RevertFrom(stateToExit, _noOpProgress);
+                    await previousState.Enter(stateToExit, _noOpProgress, direction);
                 }
             }
 
@@ -262,65 +262,13 @@ namespace WallstopStudios.DxState.State.Stack
                         1.0f - exitPhaseEndProgress
                     );
 
-                    await state.Enter(PreviousState, enterProgress);
+                    await state.Enter(PreviousState, enterProgress, StateDirection.Forward);
                 }
             }
             else
             {
                 overallProgress.Report(1f);
             }
-        }
-
-        public void RemoveHistory(IState state)
-        {
-            if (state == null)
-            {
-                throw new ArgumentNullException(nameof(state));
-            }
-
-            if (_isTransitioning)
-            {
-                throw new InvalidOperationException(
-                    "Cannot remove history while state stack is transitioning."
-                );
-            }
-
-            int targetIndex = -1;
-            for (int i = 0; i < _stack.Count; ++i)
-            {
-                if (_stack[i] == state)
-                {
-                    targetIndex = i;
-                    break;
-                }
-            }
-
-            switch (targetIndex)
-            {
-                case < 0:
-                    throw new ArgumentException(
-                        $"State '{state.Name}' not found in the stack.",
-                        nameof(state)
-                    );
-                case 0:
-                    return;
-            }
-
-            List<IState> removed = _stack.GetRange(0, targetIndex);
-            _stack.RemoveRange(0, targetIndex);
-            OnHistoryRemoved?.Invoke(removed, state);
-        }
-
-        public void RemoveHistory(string stateName)
-        {
-            if (!_statesByName.TryGetValue(stateName, out IState state))
-            {
-                throw new ArgumentException(
-                    $"State with name {stateName} does not exist",
-                    nameof(stateName)
-                );
-            }
-            RemoveHistory(state);
         }
 
         public async ValueTask ClearAsync()
@@ -332,6 +280,7 @@ namespace WallstopStudios.DxState.State.Stack
         {
             int initialStackCount = _stack.Count;
             int statesExited = 0;
+            const StateDirection direction = StateDirection.Backward;
             while (_stack.Count > 0)
             {
                 IState stateToExit = CurrentState;
@@ -346,17 +295,120 @@ namespace WallstopStudios.DxState.State.Stack
                     nextState != null ? 0.7f : 1.0f
                 );
 
-                await stateToExit.Exit(nextState, exitProgress);
+                await stateToExit.Exit(nextState, exitProgress, direction);
                 _stack.RemoveAt(_stack.Count - 1);
                 OnStatePopped?.Invoke(stateToExit, nextState);
                 if (nextState != null)
                 {
                     ScopedProgress revertProgress = new(stepProgress, 0.7f, 0.3f);
-                    await nextState.RevertFrom(stateToExit, revertProgress);
+                    await nextState.Enter(stateToExit, revertProgress, direction);
                 }
                 statesExited++;
             }
             overallProgress.Report(1f);
+        }
+
+        public async ValueTask RemoveAsync(string stateName)
+        {
+            if (!_statesByName.TryGetValue(stateName, out IState stateToRemove))
+            {
+                throw new ArgumentException(
+                    $"State with name {stateName} does not exist",
+                    nameof(stateName)
+                );
+            }
+            await RemoveAsync(stateToRemove);
+        }
+
+        public async ValueTask RemoveAsync(IState stateToRemove)
+        {
+            if (stateToRemove == null)
+            {
+                throw new ArgumentNullException(nameof(stateToRemove));
+            }
+
+            if (!_stack.Contains(stateToRemove))
+            {
+                throw new ArgumentException(
+                    $"State '{stateToRemove.Name}' not found in the stack and cannot be removed.",
+                    nameof(stateToRemove)
+                );
+            }
+
+            await PerformTransition(
+                _removeInternalAction,
+                stateToRemove,
+                stateToRemove,
+                shouldInvokeTransition: stateToRemove == CurrentState
+            );
+        }
+
+        private async ValueTask InternalRemoveAsync(
+            IState stateToRemove,
+            IProgress<float> overallProgress
+        )
+        {
+            int removalIndex = _stack.IndexOf(stateToRemove);
+            if (removalIndex < 0)
+            {
+                Debug.LogError(
+                    $"InternalRemoveAsync: stateToRemove '{stateToRemove.Name}' was not found in the stack. This should have been caught earlier."
+                );
+                overallProgress.Report(1f);
+                return;
+            }
+
+            bool wasCurrentActiveState = removalIndex == _stack.Count - 1;
+
+            IReadOnlyList<IState> previousStatesInStackView = _stack.GetRange(0, removalIndex);
+            IReadOnlyList<IState> nextStatesInStackView;
+            if (wasCurrentActiveState)
+            {
+                nextStatesInStackView = Array.Empty<IState>();
+            }
+            else
+            {
+                nextStatesInStackView = _stack.GetRange(
+                    removalIndex + 1,
+                    _stack.Count - removalIndex - 1
+                );
+            }
+
+            if (wasCurrentActiveState)
+            {
+                IState stateBecomingActive = removalIndex > 0 ? _stack[removalIndex - 1] : null;
+
+                ScopedProgress removeMethodProgress = new(overallProgress, 0f, 0.4f);
+                await stateToRemove.Remove(
+                    previousStatesInStackView,
+                    nextStatesInStackView,
+                    removeMethodProgress
+                );
+
+                _stack.RemoveAt(removalIndex);
+                if (stateBecomingActive != null)
+                {
+                    ScopedProgress revertProgress = new(overallProgress, 0.4f, 0.6f);
+                    await stateBecomingActive.Enter(
+                        stateToRemove,
+                        revertProgress,
+                        StateDirection.Backward
+                    );
+                }
+            }
+            else
+            {
+                ScopedProgress removeMethodProgress = new(overallProgress, 0f, 1.0f);
+                await stateToRemove.Remove(
+                    previousStatesInStackView,
+                    nextStatesInStackView,
+                    removeMethodProgress
+                );
+
+                _stack.RemoveAt(removalIndex);
+            }
+
+            OnStateManuallyRemoved?.Invoke(stateToRemove);
         }
 
         public void Update()
@@ -396,7 +448,8 @@ namespace WallstopStudios.DxState.State.Stack
         private async ValueTask PerformTransition<TContext>(
             Func<TContext, IProgress<float>, ValueTask> transition,
             IState targetState,
-            TContext context = default
+            TContext context = default,
+            bool shouldInvokeTransition = true
         )
         {
             if (_isTransitioning)
@@ -410,11 +463,17 @@ namespace WallstopStudios.DxState.State.Stack
             try
             {
                 IState current = CurrentState;
-                OnTransitionStart?.Invoke(current, targetState);
+                if (shouldInvokeTransition)
+                {
+                    OnTransitionStart?.Invoke(current, targetState);
+                }
                 _masterProgress.Report(0f);
                 await transition(context, _masterProgress);
                 _masterProgress.Report(1f);
-                OnTransitionComplete?.Invoke(current, CurrentState);
+                if (shouldInvokeTransition)
+                {
+                    OnTransitionComplete?.Invoke(current, CurrentState);
+                }
             }
             finally
             {

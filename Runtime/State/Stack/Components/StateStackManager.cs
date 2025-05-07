@@ -44,14 +44,14 @@
                 StateStackFlattenedMessage message = new(target);
                 message.EmitUntargeted();
             };
-            _stateStack.OnHistoryRemoved += (removed, target) =>
-            {
-                StateStackHistoryRemovedMessage message = new(removed, target);
-                message.EmitUntargeted();
-            };
             _stateStack.OnTransitionProgress += (state, progress) =>
             {
                 TransitionProgressChangedMessage message = new(state, progress);
+                message.EmitUntargeted();
+            };
+            _stateStack.OnStateManuallyRemoved += state =>
+            {
+                StateManuallyRemovedMessage message = new(state);
                 message.EmitUntargeted();
             };
         }
@@ -111,14 +111,14 @@
             await _stateStack.FlattenAsync(stateName);
         }
 
-        public void RemoveHistory(IState state)
+        public async ValueTask RemoveAsync(string stateName)
         {
-            _stateStack.RemoveHistory(state);
+            await _stateStack.RemoveAsync(stateName);
         }
 
-        public void RemoveHistory(string stateName)
+        public async ValueTask RemoveAsync(IState stateToRemove)
         {
-            _stateStack.RemoveHistory(stateName);
+            await _stateStack.RemoveAsync(stateToRemove);
         }
 
         public async ValueTask ClearAsync()

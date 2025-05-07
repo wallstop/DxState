@@ -1,25 +1,34 @@
 ﻿namespace WallstopStudios.DxState.State.Stack.States
 {
     using System;
+    using System.Collections.Generic;
     using System.ComponentModel;
     using System.Threading.Tasks;
     using Extensions;
     using UnityEngine;
     using UnityEngine.SceneManagement;
 
-    // TODO: Make serializable
+    [Serializable]
     public sealed class SceneState : IState
     {
+        [field: SerializeField]
         public string Name { get; set; }
+
+        [field: SerializeField]
         public SceneTransitionMode TransitionMode { get; set; }
+
+        [field: SerializeField]
         public LoadSceneParameters LoadSceneParameters { get; set; }
 
+        [field: SerializeField]
         public UnloadSceneOptions UnloadSceneOptions { get; set; }
 
-        public bool RevertOnRemoval { get; set; }
+        [field: SerializeField]
+        public bool RevertOnRemoval { get; set; } = true;
 
         public float? TimeInState => 0 <= _timeEntered ? Time.time - _timeEntered : null;
 
+        [SerializeField]
         private float _timeEntered = -1;
 
         public SceneState() { }
@@ -40,14 +49,18 @@
             RevertOnRemoval = revertOnRemoval;
         }
 
-        public async ValueTask Enter<TProgress>(IState previousState, TProgress progress)
+        public async ValueTask Enter<TProgress>(
+            IState previousState,
+            TProgress progress,
+            StateDirection direction
+        )
             where TProgress : IProgress<float>
         {
             _timeEntered = Time.time;
             string name = Name;
             if (string.IsNullOrEmpty(name))
             {
-                throw new ArgumentException($"Scene name cannot be null/empty", nameof(name));
+                throw new InvalidOperationException("Scene name cannot be null/empty");
             }
 
             SceneTransitionMode transitionMode = TransitionMode;
@@ -80,17 +93,42 @@
 
         public void Tick(TickMode mode, float delta) { }
 
-        public ValueTask Exit<TProgress>(IState nextState, TProgress progress)
+        public async ValueTask Exit<TProgress>(
+            IState nextState,
+            TProgress progress,
+            StateDirection direction
+        )
             where TProgress : IProgress<float>
         {
             _timeEntered = -1;
-            return new ValueTask();
+            if (direction == StateDirection.Backward)
+            {
+                await Revert(progress);
+            }
         }
 
-        public async ValueTask RevertFrom<TProgress>(IState previousState, TProgress progress)
+        public async ValueTask Remove<TProgress>(
+            IReadOnlyList<IState> previousStatesInStack,
+            IReadOnlyList<IState> nextStatesInStack,
+            TProgress progress
+        )
             where TProgress : IProgress<float>
         {
-            _timeEntered = Time.time;
+            _timeEntered = -1;
+            for (int i = 0; i < nextStatesInStack.Count; ++i)
+            {
+                if (nextStatesInStack[i] is SceneState)
+                {
+                    return;
+                }
+            }
+
+            await Revert(progress);
+        }
+
+        private async ValueTask Revert<TProgress>(TProgress progress)
+            where TProgress : IProgress<float>
+        {
             if (!RevertOnRemoval)
             {
                 return;
@@ -99,7 +137,7 @@
             string name = Name;
             if (string.IsNullOrEmpty(name))
             {
-                throw new ArgumentException($"Scene name cannot be null/empty", nameof(name));
+                throw new InvalidOperationException("Scene name cannot be null/empty");
             }
 
             SceneTransitionMode transitionMode = TransitionMode;

@@ -1,6 +1,7 @@
 ﻿namespace WallstopStudios.DxState.State.Stack
 {
     using System;
+    using System.Collections.Generic;
     using System.Threading.Tasks;
     using UnityEngine;
 
@@ -18,7 +19,11 @@
 
         protected float _stateEnteredTime = -1;
 
-        public virtual ValueTask Enter<TProgress>(IState previousState, TProgress progress)
+        public virtual ValueTask Enter<TProgress>(
+            IState previousState,
+            TProgress progress,
+            StateDirection direction
+        )
             where TProgress : IProgress<float>
         {
             _stateEnteredTime = Time.time;
@@ -27,17 +32,25 @@
 
         public virtual void Tick(TickMode mode, float delta) { }
 
-        public virtual ValueTask Exit<TProgress>(IState nextState, TProgress progress)
+        public virtual ValueTask Exit<TProgress>(
+            IState nextState,
+            TProgress progress,
+            StateDirection direction
+        )
             where TProgress : IProgress<float>
         {
             _stateEnteredTime = -1;
             return new ValueTask();
         }
 
-        public virtual ValueTask RevertFrom<TProgress>(IState previousState, TProgress progress)
+        public ValueTask Remove<TProgress>(
+            IReadOnlyList<IState> previousStatesInStack,
+            IReadOnlyList<IState> nextStatesInStack,
+            TProgress progress
+        )
             where TProgress : IProgress<float>
         {
-            _stateEnteredTime = Time.time;
+            _stateEnteredTime = -1;
             return new ValueTask();
         }
 

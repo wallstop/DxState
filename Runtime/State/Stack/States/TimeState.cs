@@ -1,20 +1,25 @@
 ﻿namespace WallstopStudios.DxState.State.Stack.States
 {
     using System;
+    using System.Collections.Generic;
     using System.Threading.Tasks;
     using UnityEngine;
 
+    [Serializable]
     public sealed class TimeState : IState
     {
+        [field: SerializeField]
         public string Name { get; set; } = $"Time State - {Guid.NewGuid()}";
 
+        [field: SerializeField]
         public float TimeScale { get; set; } = 1f;
 
         public float? TimeInState => 0 <= _timeEntered ? Time.time - _timeEntered : null;
 
+        [SerializeField]
         private float _timeEntered = -1;
 
-        private float _previousTimeScale;
+        private float _previousTimeScale = -1;
 
         public TimeState() { }
 
@@ -24,7 +29,11 @@
             TimeScale = timeScale;
         }
 
-        public ValueTask Enter<TProgress>(IState previousState, TProgress progress)
+        public ValueTask Enter<TProgress>(
+            IState previousState,
+            TProgress progress,
+            StateDirection direction
+        )
             where TProgress : IProgress<float>
         {
             _timeEntered = Time.time;
@@ -38,19 +47,42 @@
             // No-op
         }
 
-        public ValueTask Exit<TProgress>(IState nextState, TProgress progress)
+        public ValueTask Exit<TProgress>(
+            IState nextState,
+            TProgress progress,
+            StateDirection direction
+        )
             where TProgress : IProgress<float>
         {
+            if (direction == StateDirection.Backward && 0 <= _previousTimeScale)
+            {
+                Time.timeScale = _previousTimeScale;
+            }
             _timeEntered = -1;
             return new ValueTask();
         }
 
-        public ValueTask RevertFrom<TProgress>(IState previousState, TProgress progress)
+        public ValueTask Remove<TProgress>(
+            IReadOnlyList<IState> previousStatesInStack,
+            IReadOnlyList<IState> nextStatesInStack,
+            TProgress progress
+        )
             where TProgress : IProgress<float>
         {
-            _timeEntered = Time.time;
-            _previousTimeScale = Time.timeScale;
-            Time.timeScale = _previousTimeScale;
+            _timeEntered = -1;
+            for (int i = 0; i < nextStatesInStack.Count; ++i)
+            {
+                if (nextStatesInStack[i] is TimeState futureTimeState)
+                {
+                    futureTimeState._previousTimeScale = _previousTimeScale;
+                    return new ValueTask();
+                }
+            }
+
+            if (0 <= _previousTimeScale)
+            {
+                Time.timeScale = _previousTimeScale;
+            }
             return new ValueTask();
         }
     }
