@@ -11,6 +11,8 @@
     [Serializable]
     public sealed class SceneState : IState
     {
+        private const float SceneTargetProgress = 0.9f;
+
         [field: SerializeField]
         public string Name { get; set; }
 
@@ -70,14 +72,14 @@
                 {
                     await SceneManager
                         .LoadSceneAsync(name, LoadSceneParameters)
-                        .AwaitWithProgress(progress);
+                        .AwaitWithProgress(progress, total: SceneTargetProgress);
                     return;
                 }
                 case SceneTransitionMode.Removal:
                 {
                     await SceneManager
                         .UnloadSceneAsync(name, UnloadSceneOptions)
-                        .AwaitWithProgress(progress);
+                        .AwaitWithProgress(progress, total: SceneTargetProgress);
                     return;
                 }
                 default:
@@ -147,14 +149,14 @@
                 {
                     await SceneManager
                         .LoadSceneAsync(name, LoadSceneParameters)
-                        .AwaitWithProgress(progress);
+                        .AwaitWithProgress(progress, total: SceneTargetProgress);
                     return;
                 }
                 case SceneTransitionMode.Addition:
                 {
                     await SceneManager
                         .UnloadSceneAsync(name, UnloadSceneOptions)
-                        .AwaitWithProgress(progress);
+                        .AwaitWithProgress(progress, total: SceneTargetProgress);
                     return;
                 }
                 default:
