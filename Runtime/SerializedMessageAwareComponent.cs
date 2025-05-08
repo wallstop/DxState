@@ -19,11 +19,13 @@
             ISupportsPrefabSerialization
 #endif
     {
+#if ODIN_INSPECTOR
         public SerializationData SerializationData
         {
             get => _serializationData;
             set => _serializationData = value;
         }
+#endif
 
         [SerializeField]
         protected bool _showDebug;
