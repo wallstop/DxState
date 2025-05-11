@@ -40,7 +40,7 @@
             SceneTransitionMode transitionMode,
             LoadSceneParameters? loadSceneParameters = null,
             UnloadSceneOptions unloadSceneOptions = UnloadSceneOptions.None,
-            bool revertOnRemoval = false
+            bool revertOnRemoval = true
         )
         {
             Name = name;
