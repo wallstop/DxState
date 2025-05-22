@@ -59,6 +59,11 @@
             where TProgress : IProgress<float>
         {
             _timeEntered = Time.time;
+            if (direction != StateDirection.Forward)
+            {
+                return;
+            }
+
             string name = Name;
             if (string.IsNullOrEmpty(name))
             {
