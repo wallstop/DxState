@@ -5,7 +5,7 @@
     using global::DxMessaging.Core.Extensions;
     using Messages;
 
-    public sealed class StateStackManager : MessageAwareSingleton<StateStackManager>
+    public sealed class StateStackManager : DxMessageAwareSingleton<StateStackManager>
     {
         public bool IsTransitioning => _stateStack.IsTransitioning;
 

@@ -7,8 +7,8 @@
     using UnityHelpers.Utils;
 
     [RequireComponent(typeof(MessagingComponent))]
-    public abstract class MessageAwareSingleton<T> : RuntimeSingleton<T>
-        where T : MessageAwareSingleton<T>
+    public abstract class DxMessageAwareSingleton<T> : RuntimeSingleton<T>
+        where T : DxMessageAwareSingleton<T>
     {
         protected MessageRegistrationToken _messageRegistrationToken;
 
@@ -69,8 +69,9 @@
             _messageRegistrationToken = null;
         }
 
-        protected virtual void OnApplicationQuit()
+        protected override void OnApplicationQuit()
         {
+            base.OnApplicationQuit();
             _isQuitting = true;
         }
     }
