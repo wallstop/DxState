@@ -65,7 +65,7 @@
             }
 
             string name = Name;
-            if (string.IsNullOrEmpty(name))
+            if (string.IsNullOrWhiteSpace(name))
             {
                 throw new InvalidOperationException("Scene name cannot be null/empty");
             }
@@ -142,7 +142,7 @@
             }
 
             string name = Name;
-            if (string.IsNullOrEmpty(name))
+            if (string.IsNullOrWhiteSpace(name))
             {
                 throw new InvalidOperationException("Scene name cannot be null/empty");
             }

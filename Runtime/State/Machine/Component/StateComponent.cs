@@ -78,7 +78,7 @@
 
         public virtual void Log(FormattableString message)
         {
-            LoggingExtensions.Log(this, message);
+            WallstopStudiosLogger.Log(this, message);
         }
 
         protected virtual void OnEnter()
