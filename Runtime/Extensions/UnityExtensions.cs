@@ -1,4 +1,4 @@
-﻿namespace WallstopStudios.DxState.Extensions
+namespace WallstopStudios.DxState.Extensions
 {
     using System;
     using System.Threading.Tasks;

@@ -1,4 +1,4 @@
-﻿namespace WallstopStudios.DxState
+namespace WallstopStudios.DxState
 {
     using global::DxMessaging.Core;
     using global::DxMessaging.Unity;

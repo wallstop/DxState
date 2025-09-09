@@ -1,4 +1,4 @@
-﻿namespace WallstopStudios.DxState.State.Stack
+namespace WallstopStudios.DxState.State.Stack
 {
     using System;
     using System.Collections.Generic;

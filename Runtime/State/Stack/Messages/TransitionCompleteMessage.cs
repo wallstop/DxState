@@ -1,4 +1,4 @@
-﻿namespace WallstopStudios.DxState.State.Stack.Messages
+namespace WallstopStudios.DxState.State.Stack.Messages
 {
     using global::DxMessaging.Core.Attributes;
 

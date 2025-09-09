@@ -1,4 +1,4 @@
-﻿namespace WallstopStudios.DxState.State.Stack.Components
+namespace WallstopStudios.DxState.State.Stack.Components
 {
     using System.Collections.Generic;
     using System.Threading.Tasks;

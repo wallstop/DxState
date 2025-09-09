@@ -1,4 +1,4 @@
-﻿namespace WallstopStudios.DxState.State.Machine
+namespace WallstopStudios.DxState.State.Machine
 {
     using System;
 
