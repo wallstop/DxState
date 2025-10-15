@@ -63,10 +63,20 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Diagnostics
             TestState state = new TestState("ProgressState");
 
             yield return WaitForValueTask(stateStack.PushAsync(state));
-            yield return WaitUntilProgressRecorded(diagnostics, state.Name);
+            yield return WaitForValueTask(stateStack.WaitForTransitionCompletionAsync());
+            yield return null;
 
-            float recordedProgress;
-            bool hasProgress = diagnostics.LatestProgress.TryGetValue(state.Name, out recordedProgress);
+            bool hasProgress = false;
+            float recordedProgress = 0f;
+            foreach (KeyValuePair<string, float> entry in diagnostics.LatestProgress)
+            {
+                if (string.Equals(entry.Key, state.Name, StringComparison.Ordinal))
+                {
+                    recordedProgress = entry.Value;
+                    hasProgress = true;
+                    break;
+                }
+            }
 
             Assert.IsTrue(hasProgress);
             Assert.AreEqual(1f, recordedProgress, 0.0001f);
@@ -124,20 +134,6 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Diagnostics
             if (onCompleted != null)
             {
                 onCompleted(task.Result);
-            }
-        }
-
-        private static IEnumerator WaitUntilProgressRecorded(
-            StateStackDiagnostics diagnostics,
-            string stateName,
-            int maxFrames = 120
-        )
-        {
-            int framesWaited = 0;
-            while (!diagnostics.LatestProgress.ContainsKey(stateName) && framesWaited < maxFrames)
-            {
-                framesWaited++;
-                yield return null;
             }
         }
 
