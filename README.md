@@ -203,7 +203,8 @@ Use `MessagingComponent` helpers to subscribe to these events from any GameObjec
 | `StateStackBuilder` | `Runtime/State/Stack/Builder` | Fluent API for registering states and ensuring an initial stack configuration.
 | `StateStackConfiguration` | `Runtime/State/Stack/Builder` | Immutable description of stack registration that can be applied at runtime.
 | `GameState` | `Runtime/State/Stack` | Base MonoBehaviour for authoring Unity-friendly states.
-| `SceneState` / `SceneStateFactory` | `Runtime/State/Stack/States` | Declarative scene load/unload helpers.
+| `SceneState` / `SceneStateFactory` | `Runtime/State/Stack/States` | Declarative scene load/unload helpers and scene swap presets.
+| `WaitForSecondsState`, `ConditionState` | `Runtime/State/Stack/States` | Lightweight utility states that block until timers or arbitrary predicates complete.
 | `TimeState`, `TimeScaleState` | `Runtime/State/Stack/States` and `States/Systems` | Time scaling utilities for gameplay and system-level adjustments.
 | `InputModeState` | `Runtime/State/Stack/States/Systems` | Activates input action maps while the state is active.
 | `AudioSnapshotState` | `Runtime/State/Stack/States/Systems` | Crossfades to an audio mixer snapshot during the state's lifetime.

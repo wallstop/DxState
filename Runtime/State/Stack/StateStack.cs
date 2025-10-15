@@ -5,6 +5,7 @@ namespace WallstopStudios.DxState.State.Stack
     using System.Threading.Tasks;
     using UnityEngine;
     using UnityHelpers.Core.Extension;
+    using WallstopStudios.DxState.State.Stack.Internal;
 
     public sealed class StateStack
     {
@@ -32,7 +33,7 @@ namespace WallstopStudios.DxState.State.Stack
         private readonly Dictionary<string, IState> _statesByName = new(StringComparer.Ordinal);
         private readonly IProgress<float> _masterProgress;
         private readonly Progress<float> _noOpProgress;
-        private TaskCompletionSource<bool> _transitionWaiter;
+        private TransitionCompletionSource _transitionWaiter;
         private readonly Queue<QueuedTransition> _transitionQueue = new();
         private readonly List<IState> _removalPreviousBuffer = new();
         private readonly List<IState> _removalNextBuffer = new();
@@ -85,13 +86,11 @@ namespace WallstopStudios.DxState.State.Stack
             {
                 return new ValueTask();
             }
-            if (_transitionWaiter == null || _transitionWaiter.Task.IsCompleted)
+            if (_transitionWaiter == null)
             {
-                _transitionWaiter = new TaskCompletionSource<bool>(
-                    TaskCreationOptions.RunContinuationsAsynchronously
-                );
+                _transitionWaiter = TransitionCompletionSource.Rent();
             }
-            return new ValueTask(_transitionWaiter.Task);
+            return _transitionWaiter.AsValueTask();
         }
 
         public bool TryRegister(IState state, bool force = false)
@@ -580,6 +579,8 @@ namespace WallstopStudios.DxState.State.Stack
             {
                 _masterProgress.Report(1f);
                 OnTransitionFaulted?.Invoke(transitionStartState, targetState, exception);
+                _transitionWaiter?.SetException(exception);
+                _transitionWaiter = null;
                 throw;
             }
             finally
@@ -598,7 +599,7 @@ namespace WallstopStudios.DxState.State.Stack
 
             if (_transitionQueue.Count == 0)
             {
-                _transitionWaiter?.TrySetResult(true);
+                _transitionWaiter?.SetResult();
                 _transitionWaiter = null;
                 return;
             }
