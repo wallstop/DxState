@@ -1,4 +1,4 @@
-namespace WallstopStudios.DxState.Tests.EditMode.TestSupport
+namespace WallstopStudios.DxState.Tests.Runtime.TestSupport
 {
     using System;
     using System.Collections;
@@ -17,13 +17,17 @@ namespace WallstopStudios.DxState.Tests.EditMode.TestSupport
 
             if (task.IsCanceled)
             {
-                Assert.Fail("ValueTask was cancelled unexpectedly.");
+                throw new AssertionException("ValueTask was cancelled unexpectedly.");
             }
 
             if (task.IsFaulted)
             {
                 Exception resolved = task.Exception != null ? task.Exception.InnerException ?? task.Exception : null;
-                Assert.Fail(resolved != null ? resolved.Message : "ValueTask faulted without exception.");
+                throw new AssertionException(
+                    resolved != null
+                        ? $"ValueTask faulted: {resolved.Message}"
+                        : "ValueTask faulted without exception."
+                );
             }
         }
 
@@ -37,13 +41,17 @@ namespace WallstopStudios.DxState.Tests.EditMode.TestSupport
 
             if (task.IsCanceled)
             {
-                Assert.Fail("ValueTask was cancelled unexpectedly.");
+                throw new AssertionException("ValueTask was cancelled unexpectedly.");
             }
 
             if (task.IsFaulted)
             {
                 Exception resolved = task.Exception != null ? task.Exception.InnerException ?? task.Exception : null;
-                Assert.Fail(resolved != null ? resolved.Message : "ValueTask faulted without exception.");
+                throw new AssertionException(
+                    resolved != null
+                        ? $"ValueTask faulted: {resolved.Message}"
+                        : "ValueTask faulted without exception."
+                );
             }
 
             if (onCompleted != null)
@@ -60,7 +68,10 @@ namespace WallstopStudios.DxState.Tests.EditMode.TestSupport
                 yield return null;
             }
 
-            Assert.IsTrue(task.IsFaulted, "ValueTask did not fault as expected.");
+            if (!task.IsFaulted)
+            {
+                throw new AssertionException("ValueTask did not fault as expected.");
+            }
             Exception resolved = task.Exception != null ? task.Exception.InnerException ?? task.Exception : null;
             onFaulted?.Invoke(resolved);
         }

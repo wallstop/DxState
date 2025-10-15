@@ -1,4 +1,4 @@
-namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
+namespace WallstopStudios.DxState.Tests.Runtime.State.Stack
 {
     using System;
     using System.Collections;
@@ -10,7 +10,7 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
     using UnityEngine.TestTools;
     using WallstopStudios.DxState.State.Stack;
     using WallstopStudios.DxState.State.Stack.States.Scenarios;
-    using WallstopStudios.DxState.Tests.EditMode.TestSupport;
+    using WallstopStudios.DxState.Tests.Runtime.TestSupport;
 
     public sealed class ExclusiveSceneSetStateTests
     {
@@ -46,6 +46,13 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
                 sceneExecutor: executor,
                 operationAwaiter: executor.AwaitOperation
             );
+
+            ValueTask enterTask = state.Enter(
+                null,
+                new Progress<float>(_ => { }),
+                StateDirection.Forward
+            );
+            yield return ValueTaskTestHelpers.WaitForValueTask(enterTask);
 
             ValueTask removeTask = state.Remove(
                 new List<IState>(),

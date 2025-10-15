@@ -7,6 +7,40 @@ namespace WallstopStudios.DxState.State.Stack
     using UnityHelpers.Core.Extension;
     using WallstopStudios.DxState.State.Stack.Internal;
 
+    public enum StateTransitionPhase
+    {
+        Exit,
+        Enter,
+        Remove,
+        EnterRollback,
+        ExitRollback,
+        RemoveRollback,
+    }
+
+    public sealed class StateTransitionException : Exception
+    {
+        public StateTransitionException(
+            StateTransitionPhase phase,
+            IState state,
+            Exception innerException
+        )
+            : base(
+                $"State transition failed during {phase} on state '{state?.Name ?? "<null>"}'.",
+                innerException
+            )
+        {
+            Phase = phase;
+            State = state;
+            StateName = state != null ? state.Name : null;
+        }
+
+        public StateTransitionPhase Phase { get; }
+
+        public IState State { get; }
+
+        public string StateName { get; }
+    }
+
     public sealed class StateStack
     {
         public bool IsTransitioning => _isTransitioning;
@@ -149,7 +183,11 @@ namespace WallstopStudios.DxState.State.Stack
             if (previousState != null)
             {
                 ScopedProgress exitProgress = new(overallProgress, 0f, 0.5f);
-                await previousState.Exit(newState, exitProgress, direction);
+                await ExecuteStateOperationAsync(
+                    () => previousState.Exit(newState, exitProgress, direction),
+                    StateTransitionPhase.Exit,
+                    previousState
+                );
             }
             else
             {
@@ -160,14 +198,26 @@ namespace WallstopStudios.DxState.State.Stack
             ScopedProgress enterProgress = new(overallProgress, 0.5f, 0.5f);
             try
             {
-                await newState.Enter(previousState, enterProgress, direction);
+                await ExecuteStateOperationAsync(
+                    () => newState.Enter(previousState, enterProgress, direction),
+                    StateTransitionPhase.Enter,
+                    newState
+                );
             }
             catch
             {
                 _stack.RemoveAt(_stack.Count - 1);
                 if (previousState != null)
                 {
-                    await previousState.Enter(newState, _noOpProgress, StateDirection.Backward);
+                    await ExecuteStateOperationAsync(
+                        () => previousState.Enter(
+                            newState,
+                            _noOpProgress,
+                            StateDirection.Backward
+                        ),
+                        StateTransitionPhase.EnterRollback,
+                        previousState
+                    );
                 }
                 throw;
             }
@@ -202,13 +252,21 @@ namespace WallstopStudios.DxState.State.Stack
             const StateDirection direction = StateDirection.Backward;
             IState stateToPop = CurrentState;
             ScopedProgress exitProgress = new(overallProgress, 0f, 0.5f);
-            await stateToPop.Exit(nextState, exitProgress, direction);
+            await ExecuteStateOperationAsync(
+                () => stateToPop.Exit(nextState, exitProgress, direction),
+                StateTransitionPhase.Exit,
+                stateToPop
+            );
             _stack.RemoveAt(_stack.Count - 1);
             OnStatePopped?.Invoke(stateToPop, nextState);
             if (nextState != null)
             {
                 ScopedProgress revertProgress = new(overallProgress, 0.5f, 0.5f);
-                await nextState.Enter(stateToPop, revertProgress, direction);
+                await ExecuteStateOperationAsync(
+                    () => nextState.Enter(stateToPop, revertProgress, direction),
+                    StateTransitionPhase.EnterRollback,
+                    nextState
+                );
             }
             else
             {
@@ -264,12 +322,20 @@ namespace WallstopStudios.DxState.State.Stack
                     progressScaleForThisExit
                 );
 
-                await stateToExit.Exit(previousState, exitProgress, direction);
+                await ExecuteStateOperationAsync(
+                    () => stateToExit.Exit(previousState, exitProgress, direction),
+                    StateTransitionPhase.Exit,
+                    stateToExit
+                );
                 _stack.RemoveAt(_stack.Count - 1);
                 statesExited++;
                 if (previousState != null)
                 {
-                    await previousState.Enter(stateToExit, _noOpProgress, direction);
+                    await ExecuteStateOperationAsync(
+                        () => previousState.Enter(stateToExit, _noOpProgress, direction),
+                        StateTransitionPhase.EnterRollback,
+                        previousState
+                    );
                 }
             }
 
@@ -284,7 +350,15 @@ namespace WallstopStudios.DxState.State.Stack
                         1.0f - exitPhaseEndProgress
                     );
 
-                    await state.Enter(PreviousState, enterProgress, StateDirection.Forward);
+                    await ExecuteStateOperationAsync(
+                        () => state.Enter(
+                            PreviousState,
+                            enterProgress,
+                            StateDirection.Forward
+                        ),
+                        StateTransitionPhase.Enter,
+                        state
+                    );
                 }
             }
             else
@@ -317,13 +391,21 @@ namespace WallstopStudios.DxState.State.Stack
                     nextState != null ? 0.7f : 1.0f
                 );
 
-                await stateToExit.Exit(nextState, exitProgress, direction);
+                await ExecuteStateOperationAsync(
+                    () => stateToExit.Exit(nextState, exitProgress, direction),
+                    StateTransitionPhase.Exit,
+                    stateToExit
+                );
                 _stack.RemoveAt(_stack.Count - 1);
                 OnStatePopped?.Invoke(stateToExit, nextState);
                 if (nextState != null)
                 {
                     ScopedProgress revertProgress = new(stepProgress, 0.7f, 0.3f);
-                    await nextState.Enter(stateToExit, revertProgress, direction);
+                    await ExecuteStateOperationAsync(
+                        () => nextState.Enter(stateToExit, revertProgress, direction),
+                        StateTransitionPhase.EnterRollback,
+                        nextState
+                    );
                 }
                 statesExited++;
             }
@@ -412,30 +494,42 @@ namespace WallstopStudios.DxState.State.Stack
                 IState stateBecomingActive = removalIndex > 0 ? _stack[removalIndex - 1] : null;
 
                 ScopedProgress removeMethodProgress = new(overallProgress, 0f, 0.4f);
-                await stateToRemove.Remove(
-                    previousStatesBuffer,
-                    nextStatesInStackView,
-                    removeMethodProgress
+                await ExecuteStateOperationAsync(
+                    () => stateToRemove.Remove(
+                        previousStatesBuffer,
+                        nextStatesInStackView,
+                        removeMethodProgress
+                    ),
+                    StateTransitionPhase.Remove,
+                    stateToRemove
                 );
 
                 _stack.RemoveAt(removalIndex);
                 if (stateBecomingActive != null)
                 {
                     ScopedProgress revertProgress = new(overallProgress, 0.4f, 0.6f);
-                    await stateBecomingActive.Enter(
-                        stateToRemove,
-                        revertProgress,
-                        StateDirection.Backward
+                    await ExecuteStateOperationAsync(
+                        () => stateBecomingActive.Enter(
+                            stateToRemove,
+                            revertProgress,
+                            StateDirection.Backward
+                        ),
+                        StateTransitionPhase.EnterRollback,
+                        stateBecomingActive
                     );
                 }
             }
             else
             {
                 ScopedProgress removeMethodProgress = new(overallProgress, 0f, 1.0f);
-                await stateToRemove.Remove(
-                    previousStatesBuffer,
-                    nextStatesInStackView,
-                    removeMethodProgress
+                await ExecuteStateOperationAsync(
+                    () => stateToRemove.Remove(
+                        previousStatesBuffer,
+                        nextStatesInStackView,
+                        removeMethodProgress
+                    ),
+                    StateTransitionPhase.Remove,
+                    stateToRemove
                 );
 
                 _stack.RemoveAt(removalIndex);
@@ -584,6 +678,26 @@ namespace WallstopStudios.DxState.State.Stack
             {
                 _isTransitioning = false;
                 TryProcessNextQueuedTransition();
+            }
+        }
+
+        private static async ValueTask ExecuteStateOperationAsync(
+            Func<ValueTask> operation,
+            StateTransitionPhase phase,
+            IState state
+        )
+        {
+            try
+            {
+                await operation().ConfigureAwait(false);
+            }
+            catch (StateTransitionException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                throw new StateTransitionException(phase, state, exception);
             }
         }
 

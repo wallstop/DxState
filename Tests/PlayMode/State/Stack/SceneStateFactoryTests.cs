@@ -1,4 +1,4 @@
-namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
+namespace WallstopStudios.DxState.Tests.Runtime.State.Stack
 {
     using System;
     using NUnit.Framework;

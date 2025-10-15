@@ -126,6 +126,7 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
         private void HandleTransitionComplete(IState previousState, IState currentState)
         {
             RecordEvent(StateStackDiagnosticEventType.TransitionComplete, previousState, currentState);
+            HandleTransitionProgress(currentState, 1f);
         }
 
         private void HandleStatePushed(IState previousState, IState currentState)

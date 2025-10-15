@@ -12,15 +12,14 @@
   - `_transitionDepth` guard and deferred transition event wired via `TransitionDeferred` to surface queued re-entrancy (`Runtime/State/Machine/StateMachine.cs`).
   - Pending transitions now capture immutable descriptors, materialising `TransitionContext` before state swaps.
   - Updated `StateMachineTests` to assert deferred logging semantics and lifecycle ordering (`Tests/EditMode/State/Machine/StateMachineTests.cs`).
-- [ ] Seal scene loading race conditions
-  - Extend `SceneState` with internal state (`_isTransitioning`, reference counts) to prevent duplicate `LoadSceneAsync`/`UnloadSceneAsync` when the stack oscillates quickly.
-  - Detect same-scene additive loads and short-circuit if the target scene is already active (optionally via `SceneManager.GetSceneByName`).
-  - Add failure handling and logging when `AsyncOperation` returns null, ensuring `Revert` can tolerate canceled or failed loads.
-  - Cover the new behaviour with edit-mode harness that fakes `AsyncOperation` and validates revert semantics.
-- [ ] Strengthen `StateStack` transition pipeline
-  - Surface transition failures by wrapping `Enter`/`Exit`/`Remove` in try/catch, propagating diagnostics and ensuring `_isTransitioning` is reset.
-  - Prevent zero-progress hangs by enforcing a final `Report(1f)` in every path and verifying progress monotonicity in tests.
-  - Add exhaustive coverage for queue ordering, `FlattenAsync`, and manual removal to lock in current semantics before feature work.
+- [x] Seal scene loading race conditions
+  - Added forward reference counting and guarded release path to prevent duplicate additive loads/unloads under rapid stack churn (`Runtime/State/Stack/States/SceneState.cs`).
+  - Early exit now decrements references safely when other `SceneState` instances remain on the stack and when `RevertOnRemoval` is disabled.
+  - Expanded edit-mode coverage with multi-reference removal scenarios (`Tests/EditMode/State/Stack/SceneStateTests.cs`).
+- [x] Strengthen `StateStack` transition pipeline
+  - Wrapped `Enter`/`Exit`/`Remove` invocations with `ExecuteStateOperationAsync`, surfacing `StateTransitionException` diagnostics that capture failing phase and state (`Runtime/State/Stack/StateStack.cs`).
+  - Added `StateTransitionPhase` metadata and ensured rollback paths utilise the same guard rails.
+  - Updated edit-mode coverage (`Tests/EditMode/State/Stack/StateStackOperationsTests.cs`) to assert fault-handling semantics and persisted zero-progress protections via stack-level reporting.
 
 ## Priority 1 — Expressive Authoring & New Machine Model
 - [x] Introduce declarative trigger-driven state machine (`TriggerStateMachine`)

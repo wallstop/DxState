@@ -218,13 +218,16 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
                 faultEventRaised = true;
             };
 
-            yield return ExpectFaulted(stateStack.PushAsync(faultyState), ex => faultedException = ex);
+            yield return ExpectFaulted(stateStack.PushAsync(faultyState), null);
 
             Assert.IsFalse(stateStack.IsTransitioning);
             Assert.AreEqual(0, stateStack.Stack.Count);
             Assert.AreEqual(0, completedEvents.Count);
             Assert.IsTrue(faultEventRaised);
-            Assert.IsInstanceOf<InvalidOperationException>(faultedException);
+            StateTransitionException transitionException = faultedException as StateTransitionException;
+            Assert.IsNotNull(transitionException);
+            Assert.AreEqual(StateTransitionPhase.Enter, transitionException.Phase);
+            Assert.IsInstanceOf<InvalidOperationException>(transitionException.InnerException);
 
             yield return WaitForValueTask(stateStack.PushAsync(recoveryState));
             Assert.AreSame(recoveryState, stateStack.CurrentState);

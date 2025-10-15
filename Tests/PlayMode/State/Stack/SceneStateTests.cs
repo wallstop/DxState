@@ -1,4 +1,4 @@
-namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
+namespace WallstopStudios.DxState.Tests.Runtime.State.Stack
 {
     using System;
     using System.Collections;
@@ -10,7 +10,7 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
     using UnityEngine.TestTools;
     using WallstopStudios.DxState.State.Stack;
     using WallstopStudios.DxState.State.Stack.States;
-    using WallstopStudios.DxState.Tests.EditMode.TestSupport;
+    using WallstopStudios.DxState.Tests.Runtime.TestSupport;
 
     public sealed class SceneStateTests
     {
@@ -54,9 +54,17 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
         {
             TestSceneState state = new TestSceneState("TestScene", SceneTransitionMode.Addition)
             {
-                SceneLoaded = true,
                 RevertOnRemoval = true,
             };
+
+            ValueTask enterTask = state.Enter(
+                null,
+                new Progress<float>(_ => { }),
+                StateDirection.Forward
+            );
+            Assert.IsFalse(enterTask.IsCompleted);
+            state.CompleteOperation();
+            yield return ValueTaskTestHelpers.WaitForValueTask(enterTask);
 
             ValueTask remove = state.Remove(
                 Array.Empty<IState>(),
@@ -90,6 +98,50 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
                 enter,
                 exception => Assert.IsInstanceOf<InvalidOperationException>(exception)
             );
+        }
+
+        [UnityTest]
+        public IEnumerator RemoveOnlyUnloadsWhenAllReferencesReleased()
+        {
+            TestSceneState state = new TestSceneState("TestScene", SceneTransitionMode.Addition);
+
+            ValueTask firstEnter = state.Enter(
+                null,
+                new Progress<float>(_ => { }),
+                StateDirection.Forward
+            );
+            Assert.IsFalse(firstEnter.IsCompleted);
+            state.CompleteOperation();
+            yield return ValueTaskTestHelpers.WaitForValueTask(firstEnter);
+
+            ValueTask secondEnter = state.Enter(
+                null,
+                new Progress<float>(_ => { }),
+                StateDirection.Forward
+            );
+            yield return ValueTaskTestHelpers.WaitForValueTask(secondEnter);
+            Assert.AreEqual(1, state.LoadCallCount);
+
+            ValueTask firstRemove = state.Remove(
+                Array.Empty<IState>(),
+                Array.Empty<IState>(),
+                new Progress<float>(_ => { })
+            );
+            yield return ValueTaskTestHelpers.WaitForValueTask(firstRemove);
+            Assert.AreEqual(0, state.UnloadCallCount);
+            Assert.IsTrue(state.SceneLoaded);
+
+            ValueTask secondRemove = state.Remove(
+                Array.Empty<IState>(),
+                Array.Empty<IState>(),
+                new Progress<float>(_ => { })
+            );
+            Assert.IsFalse(secondRemove.IsCompleted);
+            state.CompleteOperation();
+            yield return ValueTaskTestHelpers.WaitForValueTask(secondRemove);
+
+            Assert.AreEqual(1, state.UnloadCallCount);
+            Assert.IsFalse(state.SceneLoaded);
         }
 
         private sealed class TestSceneState : SceneState

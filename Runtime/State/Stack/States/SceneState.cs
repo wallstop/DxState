@@ -37,6 +37,7 @@ namespace WallstopStudios.DxState.State.Stack.States
         private bool _isTransitioning;
         private AsyncOperation _activeOperation;
         private Task _activeOperationTask;
+        private int _activeReferenceCount;
 
         public SceneState() { }
 
@@ -76,27 +77,39 @@ namespace WallstopStudios.DxState.State.Stack.States
                 throw new InvalidOperationException("Scene name cannot be null/empty");
             }
 
+            bool acquiredReference = TryAcquireReference();
             SceneTransitionMode transitionMode = TransitionMode;
-            switch (transitionMode)
+            try
             {
-                case SceneTransitionMode.Addition:
+                switch (transitionMode)
                 {
-                    await LoadSceneAsync(name, progress);
-                    return;
+                    case SceneTransitionMode.Addition:
+                    {
+                        await LoadSceneAsync(name, progress);
+                        return;
+                    }
+                    case SceneTransitionMode.Removal:
+                    {
+                        await UnloadSceneAsync(name, progress);
+                        return;
+                    }
+                    default:
+                    {
+                        throw new InvalidEnumArgumentException(
+                            nameof(transitionMode),
+                            (int)transitionMode,
+                            typeof(SceneTransitionMode)
+                        );
+                    }
                 }
-                case SceneTransitionMode.Removal:
+            }
+            catch
+            {
+                if (acquiredReference)
                 {
-                    await UnloadSceneAsync(name, progress);
-                    return;
+                    ReleaseReference(force: true);
                 }
-                default:
-                {
-                    throw new InvalidEnumArgumentException(
-                        nameof(transitionMode),
-                        (int)transitionMode,
-                        typeof(SceneTransitionMode)
-                    );
-                }
+                throw;
             }
         }
 
@@ -132,6 +145,7 @@ namespace WallstopStudios.DxState.State.Stack.States
             {
                 if (nextStatesInStack[i] is SceneState)
                 {
+                    ReleaseReference(force: false);
                     ReportCompletion(progress);
                     return;
                 }
@@ -145,6 +159,7 @@ namespace WallstopStudios.DxState.State.Stack.States
         {
             if (!RevertOnRemoval)
             {
+                ReleaseReference(force: false);
                 ReportCompletion(progress);
                 return;
             }
@@ -165,6 +180,13 @@ namespace WallstopStudios.DxState.State.Stack.States
                 }
                 case SceneTransitionMode.Addition:
                 {
+                    bool shouldUnload = ReleaseReference(force: false);
+                    if (!shouldUnload)
+                    {
+                        ReportCompletion(progress);
+                        return;
+                    }
+
                     await UnloadSceneAsync(name, progress);
                     return;
                 }
@@ -307,6 +329,54 @@ namespace WallstopStudios.DxState.State.Stack.States
         private bool IsSceneOperationInFlight()
         {
             return _isTransitioning;
+        }
+
+        private bool TryAcquireReference()
+        {
+            if (TransitionMode != SceneTransitionMode.Addition)
+            {
+                return false;
+            }
+
+            _activeReferenceCount++;
+            return true;
+        }
+
+        private bool ReleaseReference(bool force)
+        {
+            if (TransitionMode != SceneTransitionMode.Addition)
+            {
+                return true;
+            }
+
+            if (_activeReferenceCount <= 0)
+            {
+                if (force)
+                {
+                    _activeReferenceCount = 0;
+                    return true;
+                }
+
+                string sceneName = Name;
+                if (string.IsNullOrEmpty(sceneName))
+                {
+                    return false;
+                }
+
+                return IsSceneLoaded(sceneName);
+            }
+
+            _activeReferenceCount--;
+            if (force)
+            {
+                if (_activeReferenceCount < 0)
+                {
+                    _activeReferenceCount = 0;
+                }
+                return true;
+            }
+
+            return _activeReferenceCount == 0;
         }
 
         private static void ReportCompletion<TProgress>(TProgress progress)

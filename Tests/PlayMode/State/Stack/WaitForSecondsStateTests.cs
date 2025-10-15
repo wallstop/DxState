@@ -1,10 +1,11 @@
-namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
+namespace WallstopStudios.DxState.Tests.Runtime.State.Stack
 {
     using System.Collections;
     using NUnit.Framework;
     using UnityEngine.TestTools;
     using WallstopStudios.DxState.State.Stack;
     using WallstopStudios.DxState.State.Stack.States;
+    using WallstopStudios.DxState.Tests.Runtime.TestSupport;
 
     public sealed class WaitForSecondsStateTests
     {
@@ -15,30 +16,9 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
             ProgressCollector progress = new ProgressCollector();
             System.Threading.Tasks.ValueTask enterTask = state.Enter(null, progress, StateDirection.Forward);
 
-            yield return WaitForValueTask(enterTask);
+            yield return ValueTaskTestHelpers.WaitForValueTask(enterTask);
 
             Assert.GreaterOrEqual(progress.LastValue, 1f);
-        }
-
-        private static IEnumerator WaitForValueTask(System.Threading.Tasks.ValueTask task)
-        {
-            System.Threading.Tasks.Task awaited = task.AsTask();
-            while (!awaited.IsCompleted)
-            {
-                yield return null;
-            }
-
-            if (awaited.IsFaulted)
-            {
-                System.Exception exception = awaited.Exception;
-                System.Exception inner = exception != null ? exception.InnerException : null;
-                throw inner ?? exception;
-            }
-
-            if (awaited.IsCanceled)
-            {
-                throw new System.OperationCanceledException();
-            }
         }
 
         private sealed class ProgressCollector : System.IProgress<float>
