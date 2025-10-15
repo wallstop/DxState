@@ -7,9 +7,10 @@ namespace WallstopStudios.DxState.State.Stack.States
     using Extensions;
     using UnityEngine;
     using UnityEngine.SceneManagement;
+    using AsyncOperation = UnityEngine.AsyncOperation;
 
     [Serializable]
-    public sealed class SceneState : IState
+    public class SceneState : IState
     {
         private const float SceneTargetProgress = 0.9f;
 
@@ -32,6 +33,10 @@ namespace WallstopStudios.DxState.State.Stack.States
 
         [SerializeField]
         private float _timeEntered = -1;
+
+        private bool _isTransitioning;
+        private AsyncOperation _activeOperation;
+        private Task _activeOperationTask;
 
         public SceneState() { }
 
@@ -61,6 +66,7 @@ namespace WallstopStudios.DxState.State.Stack.States
             _timeEntered = Time.time;
             if (direction != StateDirection.Forward)
             {
+                ReportCompletion(progress);
                 return;
             }
 
@@ -75,16 +81,12 @@ namespace WallstopStudios.DxState.State.Stack.States
             {
                 case SceneTransitionMode.Addition:
                 {
-                    await SceneManager
-                        .LoadSceneAsync(name, LoadSceneParameters)
-                        .AwaitWithProgress(progress, total: SceneTargetProgress);
+                    await LoadSceneAsync(name, progress);
                     return;
                 }
                 case SceneTransitionMode.Removal:
                 {
-                    await SceneManager
-                        .UnloadSceneAsync(name, UnloadSceneOptions)
-                        .AwaitWithProgress(progress, total: SceneTargetProgress);
+                    await UnloadSceneAsync(name, progress);
                     return;
                 }
                 default:
@@ -112,6 +114,10 @@ namespace WallstopStudios.DxState.State.Stack.States
             {
                 await Revert(progress);
             }
+            else
+            {
+                ReportCompletion(progress);
+            }
         }
 
         public async ValueTask Remove<TProgress>(
@@ -126,6 +132,7 @@ namespace WallstopStudios.DxState.State.Stack.States
             {
                 if (nextStatesInStack[i] is SceneState)
                 {
+                    ReportCompletion(progress);
                     return;
                 }
             }
@@ -138,6 +145,7 @@ namespace WallstopStudios.DxState.State.Stack.States
         {
             if (!RevertOnRemoval)
             {
+                ReportCompletion(progress);
                 return;
             }
 
@@ -152,16 +160,12 @@ namespace WallstopStudios.DxState.State.Stack.States
             {
                 case SceneTransitionMode.Removal:
                 {
-                    await SceneManager
-                        .LoadSceneAsync(name, LoadSceneParameters)
-                        .AwaitWithProgress(progress, total: SceneTargetProgress);
+                    await LoadSceneAsync(name, progress);
                     return;
                 }
                 case SceneTransitionMode.Addition:
                 {
-                    await SceneManager
-                        .UnloadSceneAsync(name, UnloadSceneOptions)
-                        .AwaitWithProgress(progress, total: SceneTargetProgress);
+                    await UnloadSceneAsync(name, progress);
                     return;
                 }
                 default:
@@ -172,6 +176,146 @@ namespace WallstopStudios.DxState.State.Stack.States
                         typeof(SceneTransitionMode)
                     );
                 }
+            }
+        }
+
+        private async ValueTask LoadSceneAsync<TProgress>(string sceneName, TProgress progress)
+            where TProgress : IProgress<float>
+        {
+            if (IsSceneOperationInFlight())
+            {
+                await AwaitExistingOperation(progress);
+                return;
+            }
+
+            if (IsSceneLoaded(sceneName))
+            {
+                ReportCompletion(progress);
+                return;
+            }
+
+            _isTransitioning = true;
+            try
+            {
+                AsyncOperation operation = CreateLoadOperation(sceneName, LoadSceneParameters);
+                await AwaitOperationInternal(operation, progress);
+            }
+            finally
+            {
+                _isTransitioning = false;
+            }
+        }
+
+        private async ValueTask UnloadSceneAsync<TProgress>(string sceneName, TProgress progress)
+            where TProgress : IProgress<float>
+        {
+            if (IsSceneOperationInFlight())
+            {
+                await AwaitExistingOperation(progress);
+                return;
+            }
+
+            if (!IsSceneLoaded(sceneName))
+            {
+                ReportCompletion(progress);
+                return;
+            }
+
+            _isTransitioning = true;
+            try
+            {
+                AsyncOperation operation = CreateUnloadOperation(sceneName, UnloadSceneOptions);
+                await AwaitOperationInternal(operation, progress);
+            }
+            finally
+            {
+                _isTransitioning = false;
+            }
+        }
+
+        private async ValueTask AwaitExistingOperation<TProgress>(TProgress progress)
+            where TProgress : IProgress<float>
+        {
+            Task activeTask = _activeOperationTask;
+            if (activeTask == null)
+            {
+                ReportCompletion(progress);
+                return;
+            }
+
+            await activeTask.ConfigureAwait(false);
+            ReportCompletion(progress);
+        }
+
+        private async ValueTask AwaitOperationInternal<TProgress>(
+            AsyncOperation operation,
+            TProgress progress
+        )
+            where TProgress : IProgress<float>
+        {
+            if (operation == null)
+            {
+                ReportCompletion(progress);
+                throw new InvalidOperationException($"Scene operation for '{Name}' returned null.");
+            }
+
+            _activeOperation = operation;
+            Task awaitingTask = AwaitSceneOperationAsync(operation, progress);
+            _activeOperationTask = awaitingTask;
+            try
+            {
+                await awaitingTask.ConfigureAwait(false);
+                ReportCompletion(progress);
+            }
+            finally
+            {
+                _activeOperation = null;
+                _activeOperationTask = null;
+            }
+        }
+
+        protected virtual Task AwaitSceneOperationAsync(
+            AsyncOperation operation,
+            IProgress<float> progress
+        )
+        {
+            return operation.AwaitWithProgress(progress, total: SceneTargetProgress).AsTask();
+        }
+
+        protected virtual AsyncOperation CreateLoadOperation(
+            string sceneName,
+            LoadSceneParameters parameters
+        )
+        {
+            return SceneManager.LoadSceneAsync(sceneName, parameters);
+        }
+
+        protected virtual AsyncOperation CreateUnloadOperation(
+            string sceneName,
+            UnloadSceneOptions options
+        )
+        {
+            return SceneManager.UnloadSceneAsync(sceneName, options);
+        }
+
+        protected virtual bool IsSceneLoaded(string sceneName)
+        {
+            Scene scene = SceneManager.GetSceneByName(sceneName);
+            return scene.IsValid() && scene.isLoaded;
+        }
+
+        private bool IsSceneOperationInFlight()
+        {
+            return _isTransitioning;
+        }
+
+        private static void ReportCompletion<TProgress>(TProgress progress)
+            where TProgress : IProgress<float>
+        {
+            IProgress<float> reporter = progress;
+            if (reporter != null)
+            {
+                reporter.Report(1f);
             }
         }
     }

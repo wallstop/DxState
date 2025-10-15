@@ -197,6 +197,39 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
             Assert.AreSame(secondState, stateStack.CurrentState);
         }
 
+        [UnityTest]
+        public IEnumerator FailedPushRaisesFaultEventAndAllowsRecovery()
+        {
+            StateStack stateStack = new StateStack();
+            FaultingState faultyState = new FaultingState("Faulty");
+            TestState recoveryState = new TestState("Recovery");
+
+            List<StateTransitionEvent> completedEvents = new List<StateTransitionEvent>();
+            stateStack.OnTransitionComplete += (previous, current) =>
+            {
+                completedEvents.Add(new StateTransitionEvent(previous, current));
+            };
+
+            Exception faultedException = null;
+            bool faultEventRaised = false;
+            stateStack.OnTransitionFaulted += (previous, target, exception) =>
+            {
+                faultedException = exception;
+                faultEventRaised = true;
+            };
+
+            yield return ExpectFaulted(stateStack.PushAsync(faultyState), ex => faultedException = ex);
+
+            Assert.IsFalse(stateStack.IsTransitioning);
+            Assert.AreEqual(0, stateStack.Stack.Count);
+            Assert.AreEqual(0, completedEvents.Count);
+            Assert.IsTrue(faultEventRaised);
+            Assert.IsInstanceOf<InvalidOperationException>(faultedException);
+
+            yield return WaitForValueTask(stateStack.PushAsync(recoveryState));
+            Assert.AreSame(recoveryState, stateStack.CurrentState);
+        }
+
         private static IEnumerator WaitForValueTask(ValueTask valueTask)
         {
             Task task = valueTask.AsTask();
@@ -240,6 +273,20 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
             {
                 onCompleted(task.Result);
             }
+        }
+
+        private static IEnumerator ExpectFaulted(ValueTask valueTask, Action<Exception> onFaulted)
+        {
+            Task task = valueTask.AsTask();
+            while (!task.IsCompleted)
+            {
+                yield return null;
+            }
+            Assert.IsTrue(task.IsFaulted);
+            Exception exception = task.Exception;
+            Exception inner = exception != null ? exception.InnerException : null;
+            Exception resolved = inner ?? exception;
+            onFaulted?.Invoke(resolved);
         }
 
         private sealed class TestState : IState
@@ -373,6 +420,61 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
                 where TProgress : IProgress<float>
             {
                 progress.Report(1f);
+                return new ValueTask();
+            }
+        }
+
+        private sealed class FaultingState : IState
+        {
+            private readonly string _name;
+
+            public FaultingState(string name)
+            {
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    throw new ArgumentException("State name must be provided", nameof(name));
+                }
+
+                _name = name;
+            }
+
+            public string Name => _name;
+
+            public TickMode TickMode => TickMode.None;
+
+            public bool TickWhenInactive => false;
+
+            public float? TimeInState => null;
+
+            public ValueTask Enter<TProgress>(
+                IState previousState,
+                TProgress progress,
+                StateDirection direction
+            )
+                where TProgress : IProgress<float>
+            {
+                throw new InvalidOperationException("Faulting state cannot enter.");
+            }
+
+            public void Tick(TickMode mode, float delta) { }
+
+            public ValueTask Exit<TProgress>(
+                IState nextState,
+                TProgress progress,
+                StateDirection direction
+            )
+                where TProgress : IProgress<float>
+            {
+                return new ValueTask();
+            }
+
+            public ValueTask Remove<TProgress>(
+                IReadOnlyList<IState> previousStatesInStack,
+                IReadOnlyList<IState> nextStatesInStack,
+                TProgress progress
+            )
+                where TProgress : IProgress<float>
+            {
                 return new ValueTask();
             }
         }

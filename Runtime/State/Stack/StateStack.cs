@@ -26,6 +26,7 @@ namespace WallstopStudios.DxState.State.Stack
         public event Action<IState, float> OnTransitionProgress;
         public event Action<IState> OnStateManuallyRemoved;
         public event Action<IState> OnFlattened;
+        public event Action<IState, IState, Exception> OnTransitionFaulted;
 
         private readonly List<IState> _stack = new();
         private readonly Dictionary<string, IState> _statesByName = new(StringComparer.Ordinal);
@@ -158,7 +159,19 @@ namespace WallstopStudios.DxState.State.Stack
 
             _stack.Add(newState);
             ScopedProgress enterProgress = new(overallProgress, 0.5f, 0.5f);
-            await newState.Enter(previousState, enterProgress, direction);
+            try
+            {
+                await newState.Enter(previousState, enterProgress, direction);
+            }
+            catch
+            {
+                _stack.RemoveAt(_stack.Count - 1);
+                if (previousState != null)
+                {
+                    await previousState.Enter(newState, _noOpProgress, StateDirection.Backward);
+                }
+                throw;
+            }
             OnStatePushed?.Invoke(previousState, newState);
         }
 
@@ -548,20 +561,26 @@ namespace WallstopStudios.DxState.State.Stack
             }
 
             _isTransitioning = true;
+            IState transitionStartState = CurrentState;
             try
             {
-                IState current = CurrentState;
                 if (shouldInvokeTransition)
                 {
-                    OnTransitionStart?.Invoke(current, targetState);
+                    OnTransitionStart?.Invoke(transitionStartState, targetState);
                 }
                 _masterProgress.Report(0f);
                 await transition(context, _masterProgress);
                 _masterProgress.Report(1f);
                 if (shouldInvokeTransition)
                 {
-                    OnTransitionComplete?.Invoke(current, CurrentState);
+                    OnTransitionComplete?.Invoke(transitionStartState, CurrentState);
                 }
+            }
+            catch (Exception exception)
+            {
+                _masterProgress.Report(1f);
+                OnTransitionFaulted?.Invoke(transitionStartState, targetState, exception);
+                throw;
             }
             finally
             {

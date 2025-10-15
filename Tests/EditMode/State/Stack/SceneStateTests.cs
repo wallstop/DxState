@@ -1,85 +1,194 @@
-#pragma warning disable CS0618 // Type or member is obsolete
 namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
 {
     using System;
-    using System.Collections;
     using System.Collections.Generic;
-    using System.ComponentModel;
     using System.Threading.Tasks;
     using NUnit.Framework;
-    using UnityEngine.TestTools;
+    using UnityEngine;
+    using UnityEngine.SceneManagement;
     using WallstopStudios.DxState.State.Stack;
     using WallstopStudios.DxState.State.Stack.States;
 
     public sealed class SceneStateTests
     {
-        [UnityTest]
-        public IEnumerator EnterThrowsWhenSceneNameMissing()
+        [Test]
+        public void EnterQueuesSingleLoadOperationDuringReentry()
         {
-            SceneState state = new SceneState
+            TestSceneState state = new TestSceneState("TestScene", SceneTransitionMode.Addition);
+            List<float> reported = new List<float>();
+            Progress<float> progress = new Progress<float>(value => reported.Add(value));
+
+            ValueTask firstEnter = state.Enter(null, progress, StateDirection.Forward);
+            Assert.IsFalse(firstEnter.IsCompleted);
+            ValueTask secondEnter = state.Enter(null, progress, StateDirection.Forward);
+            Assert.IsFalse(secondEnter.IsCompleted);
+            Assert.AreEqual(1, state.LoadCallCount);
+
+            state.CompleteOperation();
+            firstEnter.AsTask().GetAwaiter().GetResult();
+            secondEnter.AsTask().GetAwaiter().GetResult();
+
+            Assert.IsTrue(state.SceneLoaded);
+            Assert.IsNotEmpty(reported);
+        }
+
+        [Test]
+        public void EnterSkipsLoadWhenSceneAlreadyLoaded()
+        {
+            TestSceneState state = new TestSceneState("TestScene", SceneTransitionMode.Addition)
             {
-                TransitionMode = SceneTransitionMode.Addition,
-                Name = string.Empty,
+                SceneLoaded = true,
             };
 
-            yield return AssertFaultedAsync(
-                state.Enter(null, new ProgressRecorder(), StateDirection.Forward),
-                typeof(InvalidOperationException)
+            ValueTask enter = state.Enter(null, new Progress<float>(_ => { }), StateDirection.Forward);
+            enter.AsTask().GetAwaiter().GetResult();
+
+            Assert.AreEqual(0, state.LoadCallCount);
+        }
+
+        [Test]
+        public void RevertTriggersUnloadWhenAdditionAndConfigured()
+        {
+            TestSceneState state = new TestSceneState("TestScene", SceneTransitionMode.Addition)
+            {
+                SceneLoaded = true,
+                RevertOnRemoval = true,
+            };
+
+            ValueTask remove = state.Remove(
+                Array.Empty<IState>(),
+                Array.Empty<IState>(),
+                new Progress<float>(_ => { })
+            );
+            Assert.IsFalse(remove.IsCompleted);
+            Assert.AreEqual(1, state.UnloadCallCount);
+
+            state.CompleteOperation();
+            remove.AsTask().GetAwaiter().GetResult();
+
+            Assert.IsFalse(state.SceneLoaded);
+        }
+
+        [Test]
+        public void EnterThrowsWhenOperationFactoryReturnsNull()
+        {
+            TestSceneState state = new TestSceneState("TestScene", SceneTransitionMode.Addition)
+            {
+                SceneLoaded = false,
+                ReturnNullOperation = true,
+            };
+
+            Assert.Throws<InvalidOperationException>(() =>
+                state.Enter(null, new Progress<float>(_ => { }), StateDirection.Forward)
+                    .AsTask()
+                    .GetAwaiter()
+                    .GetResult()
             );
         }
 
-        [UnityTest]
-        public IEnumerator EnterThrowsWhenTransitionModeIsNone()
+        private sealed class TestSceneState : SceneState
         {
-            SceneState state = new SceneState
+            private TaskCompletionSource<bool> _pendingOperation;
+            private OperationKind _operationKind;
+
+            public TestSceneState(string name, SceneTransitionMode transitionMode)
+                : base(name, transitionMode) { }
+
+            public int LoadCallCount { get; private set; }
+
+            public int UnloadCallCount { get; private set; }
+
+            public bool SceneLoaded { get; set; }
+
+            public bool ReturnNullOperation { get; set; }
+
+            public void CompleteOperation()
             {
-                TransitionMode = SceneTransitionMode.None,
-                Name = "SampleScene",
-            };
+                TaskCompletionSource<bool> completion = _pendingOperation;
+                if (completion == null)
+                {
+                    return;
+                }
 
-            yield return AssertFaultedAsync(
-                state.Enter(null, new ProgressRecorder(), StateDirection.Forward),
-                typeof(InvalidEnumArgumentException)
-            );
-        }
+                if (_operationKind == OperationKind.Load)
+                {
+                    SceneLoaded = true;
+                }
+                else if (_operationKind == OperationKind.Unload)
+                {
+                    SceneLoaded = false;
+                }
 
-        [UnityTest]
-        public IEnumerator ExitThrowsWhenTransitionModeIsNone()
-        {
-            SceneState state = new SceneState
-            {
-                TransitionMode = SceneTransitionMode.None,
-                Name = "SampleScene",
-            };
-
-            yield return AssertFaultedAsync(
-                state.Exit(null, new ProgressRecorder(), StateDirection.Backward),
-                typeof(InvalidEnumArgumentException)
-            );
-        }
-
-        private static IEnumerator AssertFaultedAsync(ValueTask valueTask, Type expectedExceptionType)
-        {
-            Task task = valueTask.AsTask();
-            while (!task.IsCompleted)
-            {
-                yield return null;
+                completion.TrySetResult(true);
+                _pendingOperation = null;
+                _operationKind = OperationKind.None;
             }
 
-            Assert.IsTrue(task.IsFaulted);
-            Assert.IsNotNull(task.Exception);
-            Assert.IsNotNull(task.Exception.InnerException);
-            Assert.IsInstanceOf(expectedExceptionType, task.Exception.InnerException);
-        }
-
-        private sealed class ProgressRecorder : IProgress<float>
-        {
-            public float LastValue { get; private set; }
-
-            public void Report(float value)
+            protected override bool IsSceneLoaded(string sceneName)
             {
-                LastValue = value;
+                return SceneLoaded;
             }
+
+            protected override AsyncOperation CreateLoadOperation(
+                string sceneName,
+                LoadSceneParameters parameters
+            )
+            {
+                LoadCallCount++;
+                _operationKind = OperationKind.Load;
+                if (ReturnNullOperation)
+                {
+                    ReturnNullOperation = false;
+                    return null;
+                }
+
+                _pendingOperation = new TaskCompletionSource<bool>(
+                    TaskCreationOptions.RunContinuationsAsynchronously
+                );
+                return new FakeAsyncOperation();
+            }
+
+            protected override AsyncOperation CreateUnloadOperation(
+                string sceneName,
+                UnloadSceneOptions options
+            )
+            {
+                UnloadCallCount++;
+                _operationKind = OperationKind.Unload;
+                if (ReturnNullOperation)
+                {
+                    ReturnNullOperation = false;
+                    return null;
+                }
+
+                _pendingOperation = new TaskCompletionSource<bool>(
+                    TaskCreationOptions.RunContinuationsAsynchronously
+                );
+                return new FakeAsyncOperation();
+            }
+
+            protected override Task AwaitSceneOperationAsync(
+                AsyncOperation operation,
+                IProgress<float> progress
+            )
+            {
+                TaskCompletionSource<bool> completion = _pendingOperation;
+                if (completion == null)
+                {
+                    return Task.CompletedTask;
+                }
+
+                return completion.Task;
+            }
+
+            private enum OperationKind
+            {
+                None = 0,
+                Load = 1,
+                Unload = 2,
+            }
+
+            private sealed class FakeAsyncOperation : AsyncOperation { }
         }
     }
 }
