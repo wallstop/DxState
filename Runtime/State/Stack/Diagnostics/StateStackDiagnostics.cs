@@ -60,7 +60,8 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
         private readonly ReadOnlyDictionary<string, float> _latestProgressView;
         private readonly StateStackMetrics _metrics;
         private int _transitionQueueDepth;
-        private int _deferredTransitionCount;
+        private int _pendingDeferredTransitions;
+        private int _lifetimeDeferredTransitions;
         private bool _isDisposed;
 
         public StateStackDiagnostics(StateStack stateStack, int maxEventCount, bool logEvents)
@@ -97,7 +98,9 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
 
         public int TransitionQueueDepth => _transitionQueueDepth;
 
-        public int DeferredTransitionCount => _deferredTransitionCount;
+        public int PendingDeferredTransitions => _pendingDeferredTransitions;
+
+        public int LifetimeDeferredTransitions => _lifetimeDeferredTransitions;
 
         public void Dispose()
         {
@@ -121,7 +124,8 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
             _stateStack.OnStateManuallyRemoved += HandleStateRemoved;
             _stateStack.OnTransitionProgress += HandleTransitionProgress;
             _stateStack.OnTransitionQueueDepthChanged += HandleQueueDepthChanged;
-            _stateStack.OnDeferredTransitionCountChanged += HandleDeferredTransitionCountChanged;
+            _stateStack.OnDeferredTransitionMetricsChanged +=
+                HandleDeferredTransitionMetricsChanged;
         }
 
         private void Unsubscribe()
@@ -134,7 +138,8 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
             _stateStack.OnStateManuallyRemoved -= HandleStateRemoved;
             _stateStack.OnTransitionProgress -= HandleTransitionProgress;
             _stateStack.OnTransitionQueueDepthChanged -= HandleQueueDepthChanged;
-            _stateStack.OnDeferredTransitionCountChanged -= HandleDeferredTransitionCountChanged;
+            _stateStack.OnDeferredTransitionMetricsChanged -=
+                HandleDeferredTransitionMetricsChanged;
         }
 
         private void HandleTransitionStart(IState previousState, IState targetState)
@@ -144,7 +149,11 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
 
         private void HandleTransitionComplete(IState previousState, IState currentState)
         {
-            RecordEvent(StateStackDiagnosticEventType.TransitionComplete, previousState, currentState);
+            RecordEvent(
+                StateStackDiagnosticEventType.TransitionComplete,
+                previousState,
+                currentState
+            );
             HandleTransitionProgress(currentState, 1f);
         }
 
@@ -184,9 +193,12 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
             _transitionQueueDepth = Math.Max(0, depth);
         }
 
-        private void HandleDeferredTransitionCountChanged(int count)
+        private void HandleDeferredTransitionMetricsChanged(
+            StateStack.DeferredTransitionMetrics metrics
+        )
         {
-            _deferredTransitionCount = Math.Max(0, count);
+            _pendingDeferredTransitions = Math.Max(0, metrics.PendingDeferred);
+            _lifetimeDeferredTransitions = Math.Max(0, metrics.LifetimeDeferred);
         }
 
         private void RecordEvent(

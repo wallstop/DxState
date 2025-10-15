@@ -108,14 +108,16 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Diagnostics
             ValueTask secondPush = stateStack.PushAsync(second);
 
             Assert.AreEqual(1, diagnostics.TransitionQueueDepth);
-            Assert.AreEqual(1, diagnostics.DeferredTransitionCount);
+            Assert.AreEqual(1, diagnostics.PendingDeferredTransitions);
+            Assert.AreEqual(1, diagnostics.LifetimeDeferredTransitions);
 
             yield return WaitForValueTask(firstPush);
             yield return WaitForValueTask(secondPush);
             yield return WaitForValueTask(stateStack.WaitForTransitionCompletionAsync());
 
             Assert.AreEqual(0, diagnostics.TransitionQueueDepth);
-            Assert.AreEqual(1, diagnostics.DeferredTransitionCount);
+            Assert.AreEqual(0, diagnostics.PendingDeferredTransitions);
+            Assert.AreEqual(1, diagnostics.LifetimeDeferredTransitions);
         }
 
         private static IEnumerator WaitForValueTask(ValueTask valueTask)

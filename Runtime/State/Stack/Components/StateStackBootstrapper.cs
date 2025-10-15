@@ -30,6 +30,9 @@ namespace WallstopStudios.DxState.State.Stack.Components
         private GameState _initialState;
 
         private MessagingComponent _messagingComponent;
+        private readonly List<GameState> _registrationScratch = new List<GameState>();
+        private readonly HashSet<GameState> _uniqueStateScratch = new HashSet<GameState>();
+        private bool _registeredStatesDuringSetup;
 
         private void Awake()
         {
@@ -46,6 +49,13 @@ namespace WallstopStudios.DxState.State.Stack.Components
 
             if (_initialState == null)
             {
+                if (_registeredStatesDuringSetup)
+                {
+                    Debug.LogError(
+                        "StateStackBootstrapper has no initial state configured. Assign a state or disable Push Initial State On Start.",
+                        this
+                    );
+                }
                 return;
             }
 
@@ -89,28 +99,16 @@ namespace WallstopStudios.DxState.State.Stack.Components
 
         private void RegisterConfiguredStates()
         {
-            List<GameState> statesToRegister = new List<GameState>();
-            HashSet<GameState> uniqueStates = new HashSet<GameState>();
-
-            void TryAddState(GameState candidate)
-            {
-                if (candidate == null)
-                {
-                    return;
-                }
-
-                if (uniqueStates.Add(candidate))
-                {
-                    statesToRegister.Add(candidate);
-                }
-            }
+            _registrationScratch.Clear();
+            _uniqueStateScratch.Clear();
+            _registeredStatesDuringSetup = false;
 
             if (_registerChildGameStates)
             {
                 GameState[] discoveredStates = GetComponentsInChildren<GameState>(true);
                 for (int i = 0; i < discoveredStates.Length; i++)
                 {
-                    TryAddState(discoveredStates[i]);
+                    CollectCandidate(discoveredStates[i]);
                 }
             }
 
@@ -118,26 +116,54 @@ namespace WallstopStudios.DxState.State.Stack.Components
             {
                 for (int i = 0; i < _additionalStates.Length; i++)
                 {
-                    TryAddState(_additionalStates[i]);
+                    CollectCandidate(_additionalStates[i]);
                 }
             }
 
-            for (int i = 0; i < statesToRegister.Count; i++)
+            for (int i = 0; i < _registrationScratch.Count; i++)
             {
-                GameState state = statesToRegister[i];
+                GameState state = _registrationScratch[i];
                 bool registered = _stateStackManager.TryRegister(state, _forceRegisterStates);
                 if (!registered && !_forceRegisterStates)
                 {
-                    Debug.LogWarning(
-                        $"State '{state.name}' is already registered with the stack and was not added again."
+                    Debug.LogError(
+                        $"State '{state.name}' is already registered with the stack and was not added again. Enable Force Register to override.",
+                        state
                     );
                 }
             }
 
-            if (_initialState == null && statesToRegister.Count > 0)
+            if (_initialState == null && _registrationScratch.Count > 0)
             {
-                _initialState = statesToRegister[0];
+                _initialState = _registrationScratch[0];
             }
+
+            if (_registrationScratch.Count > 0)
+            {
+                _registeredStatesDuringSetup = true;
+            }
+
+            _registrationScratch.Clear();
+            _uniqueStateScratch.Clear();
+        }
+
+        private void CollectCandidate(GameState candidate)
+        {
+            if (candidate == null)
+            {
+                return;
+            }
+
+            if (!_uniqueStateScratch.Add(candidate))
+            {
+                Debug.LogError(
+                    $"Duplicate GameState reference detected by StateStackBootstrapper: '{candidate.name}'.",
+                    candidate
+                );
+                return;
+            }
+
+            _registrationScratch.Add(candidate);
         }
     }
 }

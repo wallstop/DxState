@@ -63,39 +63,74 @@ namespace WallstopStudios.DxState.State.Stack
         public event Action<IState> OnFlattened;
         public event Action<IState, IState, Exception> OnTransitionFaulted;
         public event Action<int> OnTransitionQueueDepthChanged;
-        public event Action<int> OnDeferredTransitionCountChanged;
+        public event Action<DeferredTransitionMetrics> OnDeferredTransitionMetricsChanged;
 
-        private readonly List<IState> _stack = new();
-        private readonly Dictionary<string, IState> _statesByName = new(StringComparer.Ordinal);
-        private readonly IProgress<float> _masterProgress;
-        private readonly Progress<float> _noOpProgress;
+        public readonly struct DeferredTransitionMetrics
+        {
+            public DeferredTransitionMetrics(int lifetime, int pending)
+            {
+                LifetimeDeferred = Math.Max(0, lifetime);
+                PendingDeferred = Math.Max(0, pending);
+            }
+
+            public int LifetimeDeferred { get; }
+
+            public int PendingDeferred { get; }
+        }
+
+        private enum TransitionOperation
+        {
+            Push,
+            Pop,
+            Flatten,
+            Clear,
+            Remove,
+        }
+
+        private readonly struct TransitionRequest
+        {
+            public TransitionRequest(
+                TransitionOperation operation,
+                IState targetState,
+                bool shouldRaiseEvents
+            )
+            {
+                Operation = operation;
+                TargetState = targetState;
+                ShouldRaiseEvents = shouldRaiseEvents;
+            }
+
+            public TransitionOperation Operation { get; }
+
+            public IState TargetState { get; }
+
+            public bool ShouldRaiseEvents { get; }
+        }
+
+        private readonly List<IState> _stack = new List<IState>();
+        private readonly Dictionary<string, IState> _statesByName = new Dictionary<string, IState>(StringComparer.Ordinal);
+        private readonly StateTransitionProgressReporter _masterProgress;
+        private static readonly IProgress<float> _noOpProgress = new NullProgress();
         private TransitionCompletionSource _transitionWaiter;
-        private readonly Queue<QueuedTransition> _transitionQueue = new();
-        private readonly List<IState> _removalPreviousBuffer = new();
-        private readonly List<IState> _removalNextBuffer = new();
+        private readonly Queue<QueuedTransition> _transitionQueue = new Queue<QueuedTransition>();
+        private readonly List<IState> _removalPreviousBuffer = new List<IState>();
+        private readonly List<IState> _removalNextBuffer = new List<IState>();
 
-        private readonly Func<IState, IProgress<float>, ValueTask> _push;
-        private readonly Func<IState, IProgress<float>, ValueTask> _pop;
-        private readonly Func<IState, IProgress<float>, ValueTask> _flatten;
-        private readonly Func<bool, IProgress<float>, ValueTask> _clear;
-        private readonly Func<IState, IProgress<float>, ValueTask> _removeInternalAction;
+        private int _currentDeferredTransitionCount;
+        private int _lifetimeDeferredTransitionCount;
 
         private bool _isTransitioning;
         private float _latestProgress = 1f;
-        private int _totalDeferredTransitions;
 
         public StateStack()
         {
-            _masterProgress = new Progress<float>(value =>
-                OnTransitionProgress?.Invoke(CurrentState, value)
-            );
-            OnTransitionProgress += (_, progress) => _latestProgress = progress;
-            _noOpProgress = new Progress<float>(_ => { });
-            _push = InternalPushAsync;
-            _pop = InternalPopAsync;
-            _flatten = InternalFlattenAsync;
-            _clear = InternalClearAsync;
-            _removeInternalAction = InternalRemoveAsync;
+            _masterProgress = new StateTransitionProgressReporter(this);
+        }
+
+        private void RecordTransitionProgress(float value)
+        {
+            _latestProgress = value;
+            OnTransitionProgress?.Invoke(CurrentState, value);
         }
 
         public int CountOf(IState state)
@@ -159,7 +194,7 @@ namespace WallstopStudios.DxState.State.Stack
             }
 
             _ = TryRegister(newState);
-            await PerformTransition(_push, newState, newState);
+            await PerformTransition(TransitionOperation.Push, newState);
         }
 
         public async ValueTask PushAsync(string stateName)
@@ -185,11 +220,13 @@ namespace WallstopStudios.DxState.State.Stack
             }
             if (previousState != null)
             {
-                ScopedProgress exitProgress = new(overallProgress, 0f, 0.5f);
-                await ExecuteStateOperationAsync(
-                    () => previousState.Exit(newState, exitProgress, direction),
-                    StateTransitionPhase.Exit,
-                    previousState
+                ScopedProgress exitProgress = new ScopedProgress(overallProgress, 0f, 0.5f);
+                await InvokeExitAsync(
+                    previousState,
+                    newState,
+                    exitProgress,
+                    direction,
+                    StateTransitionPhase.Exit
                 );
             }
             else
@@ -198,28 +235,28 @@ namespace WallstopStudios.DxState.State.Stack
             }
 
             _stack.Add(newState);
-            ScopedProgress enterProgress = new(overallProgress, 0.5f, 0.5f);
+            ScopedProgress enterProgress = new ScopedProgress(overallProgress, 0.5f, 0.5f);
             try
             {
-                await ExecuteStateOperationAsync(
-                    () => newState.Enter(previousState, enterProgress, direction),
-                    StateTransitionPhase.Enter,
-                    newState
+                await InvokeEnterAsync(
+                    newState,
+                    previousState,
+                    enterProgress,
+                    direction,
+                    StateTransitionPhase.Enter
                 );
             }
-            catch
+            catch (StateTransitionException)
             {
                 _stack.RemoveAt(_stack.Count - 1);
                 if (previousState != null)
                 {
-                    await ExecuteStateOperationAsync(
-                        () => previousState.Enter(
-                            newState,
-                            _noOpProgress,
-                            StateDirection.Backward
-                        ),
-                        StateTransitionPhase.EnterRollback,
-                        previousState
+                    await InvokeEnterAsync(
+                        previousState,
+                        newState,
+                        _noOpProgress,
+                        StateDirection.Backward,
+                        StateTransitionPhase.EnterRollback
                     );
                 }
                 throw;
@@ -236,7 +273,7 @@ namespace WallstopStudios.DxState.State.Stack
 
             IState currentState = CurrentState;
             IState nextState = PreviousState;
-            await PerformTransition(_pop, nextState, nextState);
+            await PerformTransition(TransitionOperation.Pop, nextState);
             return currentState;
         }
 
@@ -254,21 +291,25 @@ namespace WallstopStudios.DxState.State.Stack
         {
             const StateDirection direction = StateDirection.Backward;
             IState stateToPop = CurrentState;
-            ScopedProgress exitProgress = new(overallProgress, 0f, 0.5f);
-            await ExecuteStateOperationAsync(
-                () => stateToPop.Exit(nextState, exitProgress, direction),
-                StateTransitionPhase.Exit,
-                stateToPop
+            ScopedProgress exitProgress = new ScopedProgress(overallProgress, 0f, 0.5f);
+            await InvokeExitAsync(
+                stateToPop,
+                nextState,
+                exitProgress,
+                direction,
+                StateTransitionPhase.Exit
             );
             _stack.RemoveAt(_stack.Count - 1);
             OnStatePopped?.Invoke(stateToPop, nextState);
             if (nextState != null)
             {
-                ScopedProgress revertProgress = new(overallProgress, 0.5f, 0.5f);
-                await ExecuteStateOperationAsync(
-                    () => nextState.Enter(stateToPop, revertProgress, direction),
-                    StateTransitionPhase.EnterRollback,
-                    nextState
+                ScopedProgress revertProgress = new ScopedProgress(overallProgress, 0.5f, 0.5f);
+                await InvokeEnterAsync(
+                    nextState,
+                    stateToPop,
+                    revertProgress,
+                    direction,
+                    StateTransitionPhase.EnterRollback
                 );
             }
             else
@@ -284,7 +325,7 @@ namespace WallstopStudios.DxState.State.Stack
                 throw new ArgumentNullException(nameof(state));
             }
             _ = TryRegister(state);
-            await PerformTransition(_flatten, state, state);
+            await PerformTransition(TransitionOperation.Flatten, state);
             OnFlattened?.Invoke(state);
         }
 
@@ -319,25 +360,29 @@ namespace WallstopStudios.DxState.State.Stack
                 float progressScaleForThisExit =
                     1 / (float)initialStackCount * exitPhaseEndProgress;
 
-                ScopedProgress exitProgress = new(
+                ScopedProgress exitProgress = new ScopedProgress(
                     overallProgress,
                     progressStartForThisExit,
                     progressScaleForThisExit
                 );
 
-                await ExecuteStateOperationAsync(
-                    () => stateToExit.Exit(previousState, exitProgress, direction),
-                    StateTransitionPhase.Exit,
-                    stateToExit
+                await InvokeExitAsync(
+                    stateToExit,
+                    previousState,
+                    exitProgress,
+                    direction,
+                    StateTransitionPhase.Exit
                 );
                 _stack.RemoveAt(_stack.Count - 1);
                 statesExited++;
                 if (previousState != null)
                 {
-                    await ExecuteStateOperationAsync(
-                        () => previousState.Enter(stateToExit, _noOpProgress, direction),
-                        StateTransitionPhase.EnterRollback,
-                        previousState
+                    await InvokeEnterAsync(
+                        previousState,
+                        stateToExit,
+                        _noOpProgress,
+                        direction,
+                        StateTransitionPhase.EnterRollback
                     );
                 }
             }
@@ -347,20 +392,18 @@ namespace WallstopStudios.DxState.State.Stack
                 _stack.Add(state);
                 if (!targetWasAlreadyActive)
                 {
-                    ScopedProgress enterProgress = new(
+                    ScopedProgress enterProgress = new ScopedProgress(
                         overallProgress,
                         exitPhaseEndProgress,
                         1.0f - exitPhaseEndProgress
                     );
 
-                    await ExecuteStateOperationAsync(
-                        () => state.Enter(
-                            PreviousState,
-                            enterProgress,
-                            StateDirection.Forward
-                        ),
-                        StateTransitionPhase.Enter,
-                        state
+                    await InvokeEnterAsync(
+                        state,
+                        PreviousState,
+                        enterProgress,
+                        StateDirection.Forward,
+                        StateTransitionPhase.Enter
                     );
                 }
             }
@@ -372,7 +415,7 @@ namespace WallstopStudios.DxState.State.Stack
 
         public async ValueTask ClearAsync()
         {
-            await PerformTransition(_clear, null);
+            await PerformTransition(TransitionOperation.Clear, null);
         }
 
         private async ValueTask InternalClearAsync(bool unused, IProgress<float> overallProgress)
@@ -386,28 +429,32 @@ namespace WallstopStudios.DxState.State.Stack
                 IState nextState = PreviousState;
                 float progressStart = statesExited / (float)initialStackCount;
                 float progressScale = 1 / (float)initialStackCount;
-                ScopedProgress stepProgress = new(overallProgress, progressStart, progressScale);
+                ScopedProgress stepProgress = new ScopedProgress(overallProgress, progressStart, progressScale);
 
-                ScopedProgress exitProgress = new(
+                ScopedProgress exitProgress = new ScopedProgress(
                     stepProgress,
                     0f,
                     nextState != null ? 0.7f : 1.0f
                 );
 
-                await ExecuteStateOperationAsync(
-                    () => stateToExit.Exit(nextState, exitProgress, direction),
-                    StateTransitionPhase.Exit,
-                    stateToExit
+                await InvokeExitAsync(
+                    stateToExit,
+                    nextState,
+                    exitProgress,
+                    direction,
+                    StateTransitionPhase.Exit
                 );
                 _stack.RemoveAt(_stack.Count - 1);
                 OnStatePopped?.Invoke(stateToExit, nextState);
                 if (nextState != null)
                 {
-                    ScopedProgress revertProgress = new(stepProgress, 0.7f, 0.3f);
-                    await ExecuteStateOperationAsync(
-                        () => nextState.Enter(stateToExit, revertProgress, direction),
-                        StateTransitionPhase.EnterRollback,
-                        nextState
+                    ScopedProgress revertProgress = new ScopedProgress(stepProgress, 0.7f, 0.3f);
+                    await InvokeEnterAsync(
+                        nextState,
+                        stateToExit,
+                        revertProgress,
+                        direction,
+                        StateTransitionPhase.EnterRollback
                     );
                 }
                 statesExited++;
@@ -442,12 +489,8 @@ namespace WallstopStudios.DxState.State.Stack
                 );
             }
 
-            await PerformTransition(
-                _removeInternalAction,
-                stateToRemove,
-                stateToRemove,
-                shouldInvokeTransition: stateToRemove == CurrentState
-            );
+            bool shouldRaiseEvents = stateToRemove == CurrentState;
+            await PerformTransition(TransitionOperation.Remove, stateToRemove, shouldRaiseEvents);
         }
 
         private async ValueTask InternalRemoveAsync(
@@ -496,43 +539,35 @@ namespace WallstopStudios.DxState.State.Stack
             {
                 IState stateBecomingActive = removalIndex > 0 ? _stack[removalIndex - 1] : null;
 
-                ScopedProgress removeMethodProgress = new(overallProgress, 0f, 0.4f);
-                await ExecuteStateOperationAsync(
-                    () => stateToRemove.Remove(
-                        previousStatesBuffer,
-                        nextStatesInStackView,
-                        removeMethodProgress
-                    ),
-                    StateTransitionPhase.Remove,
-                    stateToRemove
+                ScopedProgress removeMethodProgress = new ScopedProgress(overallProgress, 0f, 0.4f);
+                await InvokeRemoveAsync(
+                    stateToRemove,
+                    previousStatesBuffer,
+                    nextStatesInStackView,
+                    removeMethodProgress
                 );
 
                 _stack.RemoveAt(removalIndex);
                 if (stateBecomingActive != null)
                 {
-                    ScopedProgress revertProgress = new(overallProgress, 0.4f, 0.6f);
-                    await ExecuteStateOperationAsync(
-                        () => stateBecomingActive.Enter(
-                            stateToRemove,
-                            revertProgress,
-                            StateDirection.Backward
-                        ),
-                        StateTransitionPhase.EnterRollback,
-                        stateBecomingActive
+                    ScopedProgress revertProgress = new ScopedProgress(overallProgress, 0.4f, 0.6f);
+                    await InvokeEnterAsync(
+                        stateBecomingActive,
+                        stateToRemove,
+                        revertProgress,
+                        StateDirection.Backward,
+                        StateTransitionPhase.EnterRollback
                     );
                 }
             }
             else
             {
-                ScopedProgress removeMethodProgress = new(overallProgress, 0f, 1.0f);
-                await ExecuteStateOperationAsync(
-                    () => stateToRemove.Remove(
-                        previousStatesBuffer,
-                        nextStatesInStackView,
-                        removeMethodProgress
-                    ),
-                    StateTransitionPhase.Remove,
-                    stateToRemove
+                ScopedProgress removeMethodProgress = new ScopedProgress(overallProgress, 0f, 1.0f);
+                await InvokeRemoveAsync(
+                    stateToRemove,
+                    previousStatesBuffer,
+                    nextStatesInStackView,
+                    removeMethodProgress
                 );
 
                 _stack.RemoveAt(removalIndex);
@@ -541,6 +576,71 @@ namespace WallstopStudios.DxState.State.Stack
             previousStatesBuffer.Clear();
             nextStatesBuffer.Clear();
             OnStateManuallyRemoved?.Invoke(stateToRemove);
+        }
+
+        private static async ValueTask InvokeExitAsync(
+            IState state,
+            IState nextState,
+            IProgress<float> progress,
+            StateDirection direction,
+            StateTransitionPhase phase
+        )
+        {
+            try
+            {
+                await state.Exit(nextState, progress, direction);
+            }
+            catch (StateTransitionException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                throw new StateTransitionException(phase, state, exception);
+            }
+        }
+
+        private static async ValueTask InvokeEnterAsync(
+            IState state,
+            IState previousState,
+            IProgress<float> progress,
+            StateDirection direction,
+            StateTransitionPhase phase
+        )
+        {
+            try
+            {
+                await state.Enter(previousState, progress, direction);
+            }
+            catch (StateTransitionException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                throw new StateTransitionException(phase, state, exception);
+            }
+        }
+
+        private static async ValueTask InvokeRemoveAsync(
+            IState state,
+            IReadOnlyList<IState> previousStates,
+            IReadOnlyList<IState> nextStates,
+            IProgress<float> progress
+        )
+        {
+            try
+            {
+                await state.Remove(previousStates, nextStates, progress);
+            }
+            catch (StateTransitionException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                throw new StateTransitionException(StateTransitionPhase.Remove, state, exception);
+            }
         }
 
         public void Update()
@@ -616,40 +716,29 @@ namespace WallstopStudios.DxState.State.Stack
             return Time.deltaTime;
         }
 
-        private ValueTask PerformTransition<TContext>(
-            Func<TContext, IProgress<float>, ValueTask> transition,
+        private ValueTask PerformTransition(
+            TransitionOperation operation,
             IState targetState,
-            TContext context = default,
-            bool shouldInvokeTransition = true
+            bool shouldRaiseEvents = true
         )
         {
-            TransitionTaskBase transitionTask = new TransitionTask<TContext>(
-                this,
-                transition,
-                targetState,
-                context,
-                shouldInvokeTransition
-            );
+            TransitionRequest request = new TransitionRequest(operation, targetState, shouldRaiseEvents);
             if (!_isTransitioning && _transitionQueue.Count == 0)
             {
-                return transitionTask.Execute();
+                return ExecuteTransitionInternal(request);
             }
 
             TransitionCompletionSource completionSource = TransitionCompletionSource.Rent();
-            _transitionQueue.Enqueue(new QueuedTransition(transitionTask, completionSource));
+            _transitionQueue.Enqueue(new QueuedTransition(request, completionSource, true));
             OnTransitionQueueDepthChanged?.Invoke(_transitionQueue.Count);
-            _totalDeferredTransitions++;
-            OnDeferredTransitionCountChanged?.Invoke(_totalDeferredTransitions);
+            _currentDeferredTransitionCount++;
+            _lifetimeDeferredTransitionCount++;
+            PublishDeferredMetrics();
             TryProcessNextQueuedTransition();
             return completionSource.AsValueTask();
         }
 
-        private async ValueTask ExecuteTransitionInternal<TContext>(
-            Func<TContext, IProgress<float>, ValueTask> transition,
-            IState targetState,
-            TContext context,
-            bool shouldInvokeTransition
-        )
+        private async ValueTask ExecuteTransitionInternal(TransitionRequest request)
         {
             if (_isTransitioning)
             {
@@ -662,14 +751,14 @@ namespace WallstopStudios.DxState.State.Stack
             IState transitionStartState = CurrentState;
             try
             {
-                if (shouldInvokeTransition)
+                if (request.ShouldRaiseEvents)
                 {
-                    OnTransitionStart?.Invoke(transitionStartState, targetState);
+                    OnTransitionStart?.Invoke(transitionStartState, request.TargetState);
                 }
                 _masterProgress.Report(0f);
-                await transition(context, _masterProgress);
+                await ExecuteTransitionOperationAsync(request);
                 _masterProgress.Report(1f);
-                if (shouldInvokeTransition)
+                if (request.ShouldRaiseEvents)
                 {
                     OnTransitionComplete?.Invoke(transitionStartState, CurrentState);
                 }
@@ -677,7 +766,7 @@ namespace WallstopStudios.DxState.State.Stack
             catch (Exception exception)
             {
                 _masterProgress.Report(1f);
-                OnTransitionFaulted?.Invoke(transitionStartState, targetState, exception);
+                OnTransitionFaulted?.Invoke(transitionStartState, request.TargetState, exception);
                 _transitionWaiter?.SetException(exception);
                 _transitionWaiter = null;
                 throw;
@@ -689,23 +778,22 @@ namespace WallstopStudios.DxState.State.Stack
             }
         }
 
-        private static async ValueTask ExecuteStateOperationAsync(
-            Func<ValueTask> operation,
-            StateTransitionPhase phase,
-            IState state
-        )
+        private ValueTask ExecuteTransitionOperationAsync(TransitionRequest request)
         {
-            try
+            switch (request.Operation)
             {
-                await operation();
-            }
-            catch (StateTransitionException)
-            {
-                throw;
-            }
-            catch (Exception exception)
-            {
-                throw new StateTransitionException(phase, state, exception);
+                case TransitionOperation.Push:
+                    return InternalPushAsync(request.TargetState, _masterProgress);
+                case TransitionOperation.Pop:
+                    return InternalPopAsync(request.TargetState, _masterProgress);
+                case TransitionOperation.Flatten:
+                    return InternalFlattenAsync(request.TargetState, _masterProgress);
+                case TransitionOperation.Clear:
+                    return InternalClearAsync(false, _masterProgress);
+                case TransitionOperation.Remove:
+                    return InternalRemoveAsync(request.TargetState, _masterProgress);
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(request.Operation), request.Operation, null);
             }
         }
 
@@ -719,12 +807,22 @@ namespace WallstopStudios.DxState.State.Stack
             if (_transitionQueue.Count == 0)
             {
                 OnTransitionQueueDepthChanged?.Invoke(0);
+                if (_currentDeferredTransitionCount != 0)
+                {
+                    _currentDeferredTransitionCount = 0;
+                    PublishDeferredMetrics();
+                }
                 _transitionWaiter?.SetResult();
                 _transitionWaiter = null;
                 return;
             }
 
             QueuedTransition queuedTransition = _transitionQueue.Dequeue();
+            if (queuedTransition.CountedAsDeferred && _currentDeferredTransitionCount > 0)
+            {
+                _currentDeferredTransitionCount--;
+                PublishDeferredMetrics();
+            }
             OnTransitionQueueDepthChanged?.Invoke(_transitionQueue.Count);
             _ = RunQueuedTransitionAsync(queuedTransition);
         }
@@ -733,7 +831,7 @@ namespace WallstopStudios.DxState.State.Stack
         {
             try
             {
-                await queuedTransition.Task.Execute();
+                await ExecuteTransitionInternal(queuedTransition.Request);
                 TransitionCompletionSource completionSource = queuedTransition.CompletionSource;
                 completionSource?.SetResult();
             }
@@ -744,59 +842,59 @@ namespace WallstopStudios.DxState.State.Stack
             }
         }
 
-        private abstract class TransitionTaskBase
+        private void PublishDeferredMetrics()
         {
-            public abstract ValueTask Execute();
-        }
-
-        private sealed class TransitionTask<TContext> : TransitionTaskBase
-        {
-            private readonly StateStack _owner;
-            private readonly Func<TContext, IProgress<float>, ValueTask> _transition;
-            private readonly IState _targetState;
-            private readonly TContext _context;
-            private readonly bool _shouldInvokeTransition;
-
-            public TransitionTask(
-                StateStack owner,
-                Func<TContext, IProgress<float>, ValueTask> transition,
-                IState targetState,
-                TContext context,
-                bool shouldInvokeTransition
-            )
+            Action<DeferredTransitionMetrics> handler = OnDeferredTransitionMetricsChanged;
+            if (handler == null)
             {
-                _owner = owner ?? throw new ArgumentNullException(nameof(owner));
-                _transition = transition ?? throw new ArgumentNullException(nameof(transition));
-                _targetState = targetState;
-                _context = context;
-                _shouldInvokeTransition = shouldInvokeTransition;
+                return;
             }
 
-            public override ValueTask Execute()
-            {
-                return _owner.ExecuteTransitionInternal(
-                    _transition,
-                    _targetState,
-                    _context,
-                    _shouldInvokeTransition
-                );
-            }
+            DeferredTransitionMetrics metrics = new DeferredTransitionMetrics(
+                _lifetimeDeferredTransitionCount,
+                _currentDeferredTransitionCount
+            );
+            handler.Invoke(metrics);
         }
 
         private readonly struct QueuedTransition
         {
             public QueuedTransition(
-                TransitionTaskBase task,
-                TransitionCompletionSource completionSource
+                TransitionRequest request,
+                TransitionCompletionSource completionSource,
+                bool countedAsDeferred
             )
             {
-                Task = task;
+                Request = request;
                 CompletionSource = completionSource;
+                CountedAsDeferred = countedAsDeferred;
             }
 
-            public TransitionTaskBase Task { get; }
+            public TransitionRequest Request { get; }
 
             public TransitionCompletionSource CompletionSource { get; }
+
+            public bool CountedAsDeferred { get; }
+        }
+
+        private sealed class StateTransitionProgressReporter : IProgress<float>
+        {
+            private readonly StateStack _owner;
+
+            public StateTransitionProgressReporter(StateStack owner)
+            {
+                _owner = owner ?? throw new ArgumentNullException(nameof(owner));
+            }
+
+            public void Report(float value)
+            {
+                _owner.RecordTransitionProgress(value);
+            }
+        }
+
+        private sealed class NullProgress : IProgress<float>
+        {
+            public void Report(float value) { }
         }
     }
 }

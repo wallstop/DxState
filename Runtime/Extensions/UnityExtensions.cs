@@ -6,6 +6,7 @@ namespace WallstopStudios.DxState.Extensions
     using System.Threading;
     using System.Threading.Tasks;
     using UnityEngine;
+    using WallstopStudios.DxState.State.Stack.Internal;
 #if UNITY_EDITOR
     using UnityEditor;
 #endif
@@ -33,7 +34,10 @@ namespace WallstopStudios.DxState.Extensions
 
             if (operation.isDone)
             {
-                ReportProgress(progressReporter, ResolveNormalizedProgress(operation.progress, total));
+                ReportProgress(
+                    progressReporter,
+                    ResolveNormalizedProgress(operation.progress, total)
+                );
                 return default;
             }
 
@@ -78,7 +82,7 @@ namespace WallstopStudios.DxState.Extensions
             private readonly IProgress<float> _progressReporter;
             private readonly float _total;
             private readonly CancellationToken _cancellationToken;
-            private readonly TaskCompletionSource<bool> _completion;
+            private TransitionCompletionSource _completionSource;
             private CancellationTokenRegistration _cancellationRegistration;
             private bool _completed;
 
@@ -93,9 +97,6 @@ namespace WallstopStudios.DxState.Extensions
                 _progressReporter = progressReporter;
                 _total = Math.Abs(total) < float.Epsilon ? 1f : total;
                 _cancellationToken = cancellationToken;
-                _completion = new TaskCompletionSource<bool>(
-                    TaskCreationOptions.RunContinuationsAsynchronously
-                );
             }
 
             public ValueTask AwaitAsync()
@@ -110,7 +111,8 @@ namespace WallstopStudios.DxState.Extensions
                     _cancellationRegistration = _cancellationToken.Register(OnCanceled);
                 }
 
-                return new ValueTask(_completion.Task);
+                _completionSource = TransitionCompletionSource.Rent();
+                return _completionSource.AsValueTask();
             }
 
             public void Update()
@@ -133,7 +135,7 @@ namespace WallstopStudios.DxState.Extensions
                 _completed = true;
                 ReportProgress();
                 Cleanup();
-                _completion.TrySetResult(true);
+                SignalCompletion(null);
             }
 
             private void OnCanceled()
@@ -145,7 +147,7 @@ namespace WallstopStudios.DxState.Extensions
 
                 _completed = true;
                 Cleanup();
-                _completion.TrySetCanceled(_cancellationToken);
+                SignalCompletion(new OperationCanceledException(_cancellationToken));
             }
 
             private void Cleanup()
@@ -164,17 +166,42 @@ namespace WallstopStudios.DxState.Extensions
             public void Dispose()
             {
                 Cleanup();
+                if (_completed)
+                {
+                    return;
+                }
+
+                _completed = true;
+                SignalCompletion(new ObjectDisposedException(nameof(AsyncOperationAwaiter)));
+            }
+
+            private void SignalCompletion(Exception exception)
+            {
+                TransitionCompletionSource completion = _completionSource;
+                if (completion == null)
+                {
+                    return;
+                }
+
+                _completionSource = null;
+
+                if (exception == null)
+                {
+                    completion.SetResult();
+                    return;
+                }
+
+                completion.SetException(exception);
             }
         }
 
 #if UNITY_EDITOR
         private static class ProgressInvoker
         {
-            private static readonly FieldInfo HandlerField =
-                typeof(Progress<float>).GetField(
-                    "_handler",
-                    BindingFlags.Instance | BindingFlags.NonPublic
-                );
+            private static readonly FieldInfo HandlerField = typeof(Progress<float>).GetField(
+                "_handler",
+                BindingFlags.Instance | BindingFlags.NonPublic
+            );
 
             public static bool TryInvokeInline(Progress<float> progress, float value)
             {

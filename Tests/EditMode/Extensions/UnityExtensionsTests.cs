@@ -85,5 +85,39 @@ namespace WallstopStudios.DxState.Tests.EditMode.Extensions
 
             Assert.IsTrue(awaitedTask.IsCanceled);
         }
+
+        [UnityTest]
+        public IEnumerator AwaitWithProgressDoesNotAllocateAfterWarmup()
+        {
+            // Warm up the driver to clear initial allocations.
+            Progress<float> warmupProgress = new Progress<float>(_ => { });
+            ResourceRequest warmupRequest = Resources.LoadAsync<TextAsset>("TestData");
+            ValueTask warmupTask = warmupRequest.AwaitWithProgress(warmupProgress);
+            while (!warmupTask.IsCompleted)
+            {
+                yield return null;
+            }
+            warmupTask.GetAwaiter().GetResult();
+            yield return null;
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            Progress<float> progress = new Progress<float>(_ => { });
+            long before = GC.GetAllocatedBytesForCurrentThread();
+
+            ResourceRequest request = Resources.LoadAsync<TextAsset>("TestData");
+            ValueTask awaited = request.AwaitWithProgress(progress);
+            while (!awaited.IsCompleted)
+            {
+                yield return null;
+            }
+            awaited.GetAwaiter().GetResult();
+            yield return null;
+
+            long after = GC.GetAllocatedBytesForCurrentThread();
+            Assert.LessOrEqual(after - before, 0);
+        }
     }
 }

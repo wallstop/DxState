@@ -202,9 +202,14 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
         {
             StateStack stateStack = new StateStack();
             List<int> depthSnapshots = new List<int>();
-            List<int> deferredSnapshots = new List<int>();
+            List<int> pendingSnapshots = new List<int>();
+            List<int> lifetimeSnapshots = new List<int>();
             stateStack.OnTransitionQueueDepthChanged += depth => depthSnapshots.Add(depth);
-            stateStack.OnDeferredTransitionCountChanged += count => deferredSnapshots.Add(count);
+            stateStack.OnDeferredTransitionMetricsChanged += metrics =>
+            {
+                pendingSnapshots.Add(metrics.PendingDeferred);
+                lifetimeSnapshots.Add(metrics.LifetimeDeferred);
+            };
 
             AsyncTestState firstState = new AsyncTestState("DepthFirst");
             AsyncTestState secondState = new AsyncTestState("DepthSecond");
@@ -224,8 +229,37 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
             Assert.IsTrue(depthSnapshots.Contains(1));
             Assert.IsTrue(depthSnapshots.Contains(2));
             Assert.AreEqual(0, depthSnapshots[^1]);
-            Assert.IsNotEmpty(deferredSnapshots);
-            Assert.AreEqual(2, deferredSnapshots[^1]);
+            Assert.IsNotEmpty(pendingSnapshots);
+            Assert.IsNotEmpty(lifetimeSnapshots);
+            Assert.AreEqual(0, pendingSnapshots[^1]);
+            Assert.IsTrue(lifetimeSnapshots.Contains(1));
+            Assert.AreEqual(2, lifetimeSnapshots[^1]);
+        }
+
+        [UnityTest]
+        public IEnumerator PushAndPopAvoidAllocationsAfterWarmup()
+        {
+            StateStack stateStack = new StateStack();
+            TestState state = new TestState("AllocState");
+
+            yield return WaitForValueTask(stateStack.PushAsync(state));
+            yield return WaitForValueTask(stateStack.PopAsync());
+            yield return null;
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            long before = GC.GetAllocatedBytesForCurrentThread();
+
+            ValueTask pushTask = stateStack.PushAsync(state);
+            yield return WaitForValueTaskWithoutConversions(pushTask);
+
+            ValueTask<IState> popTask = stateStack.PopAsync();
+            yield return WaitForValueTaskWithoutConversions(popTask);
+
+            long after = GC.GetAllocatedBytesForCurrentThread();
+            Assert.LessOrEqual(after - before, 0);
         }
 
         [UnityTest]
@@ -307,6 +341,26 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
             {
                 onCompleted(task.Result);
             }
+        }
+
+        private static IEnumerator WaitForValueTaskWithoutConversions(ValueTask valueTask)
+        {
+            while (!valueTask.IsCompleted)
+            {
+                yield return null;
+            }
+
+            valueTask.GetAwaiter().GetResult();
+        }
+
+        private static IEnumerator WaitForValueTaskWithoutConversions(ValueTask<IState> valueTask)
+        {
+            while (!valueTask.IsCompleted)
+            {
+                yield return null;
+            }
+
+            valueTask.GetAwaiter().GetResult();
         }
 
         private static IEnumerator ExpectFaulted(ValueTask valueTask, Action<Exception> onFaulted)
