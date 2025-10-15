@@ -4,6 +4,8 @@ namespace WallstopStudios.DxState.State.Stack.Components
     using System.Threading.Tasks;
     using global::DxMessaging.Core.Extensions;
     using Messages;
+    using UnityEngine;
+    using WallstopStudios.DxState.State.Stack.Diagnostics;
 
     public sealed class StateStackManager : DxMessageAwareSingleton<StateStackManager>
     {
@@ -16,11 +18,26 @@ namespace WallstopStudios.DxState.State.Stack.Components
         public IReadOnlyDictionary<string, IState> RegisteredStates => _stateStack.RegisteredStates;
         public IReadOnlyList<IState> Stack => _stateStack.Stack;
 
+        public StateStackDiagnostics Diagnostics => _diagnostics;
+
         private readonly StateStack _stateStack = new();
+        [SerializeField]
+        private bool _enableDiagnosticsLogging;
+
+        [SerializeField]
+        [Min(1)]
+        private int _diagnosticHistoryCapacity = 64;
+
+        private StateStackDiagnostics _diagnostics;
 
         protected override void Awake()
         {
             base.Awake();
+            _diagnostics = new StateStackDiagnostics(
+                _stateStack,
+                _diagnosticHistoryCapacity,
+                _enableDiagnosticsLogging
+            );
             _stateStack.OnStatePopped += (previous, current) =>
             {
                 StatePoppedMessage message = new(previous, current);
@@ -56,6 +73,13 @@ namespace WallstopStudios.DxState.State.Stack.Components
                 StateManuallyRemovedMessage message = new(state);
                 message.EmitUntargeted();
             };
+        }
+
+        protected override void OnDestroy()
+        {
+            _diagnostics?.Dispose();
+            _diagnostics = null;
+            base.OnDestroy();
         }
 
         public int CountOf(IState state)

@@ -49,7 +49,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
                 return;
             }
 
-            if (_stateStackManager.CurrentState == _initialState)
+            if (ReferenceEquals(_stateStackManager.CurrentState, _initialState))
             {
                 return;
             }
@@ -57,7 +57,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
             IReadOnlyList<IState> stack = _stateStackManager.Stack;
             for (int i = 0; i < stack.Count; i++)
             {
-                if (stack[i] == _initialState)
+                if (ReferenceEquals(stack[i], _initialState))
                 {
                     await _stateStackManager.FlattenAsync(_initialState);
                     return;

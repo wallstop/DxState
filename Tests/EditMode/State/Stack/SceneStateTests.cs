@@ -2,17 +2,19 @@
 namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
 {
     using System;
+    using System.Collections;
     using System.Collections.Generic;
     using System.ComponentModel;
     using System.Threading.Tasks;
     using NUnit.Framework;
+    using UnityEngine.TestTools;
     using WallstopStudios.DxState.State.Stack;
     using WallstopStudios.DxState.State.Stack.States;
 
     public sealed class SceneStateTests
     {
-        [Test]
-        public void EnterThrowsWhenSceneNameMissing()
+        [UnityTest]
+        public IEnumerator EnterThrowsWhenSceneNameMissing()
         {
             SceneState state = new SceneState
             {
@@ -20,16 +22,14 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
                 Name = string.Empty,
             };
 
-            Assert.Throws<InvalidOperationException>(() =>
-                state
-                    .Enter(null, new ProgressRecorder(), StateDirection.Forward)
-                    .GetAwaiter()
-                    .GetResult()
+            yield return AssertFaultedAsync(
+                state.Enter(null, new ProgressRecorder(), StateDirection.Forward),
+                typeof(InvalidOperationException)
             );
         }
 
-        [Test]
-        public void EnterThrowsWhenTransitionModeIsNone()
+        [UnityTest]
+        public IEnumerator EnterThrowsWhenTransitionModeIsNone()
         {
             SceneState state = new SceneState
             {
@@ -37,16 +37,14 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
                 Name = "SampleScene",
             };
 
-            Assert.Throws<InvalidEnumArgumentException>(() =>
-                state
-                    .Enter(null, new ProgressRecorder(), StateDirection.Forward)
-                    .GetAwaiter()
-                    .GetResult()
+            yield return AssertFaultedAsync(
+                state.Enter(null, new ProgressRecorder(), StateDirection.Forward),
+                typeof(InvalidEnumArgumentException)
             );
         }
 
-        [Test]
-        public void ExitThrowsWhenTransitionModeIsNone()
+        [UnityTest]
+        public IEnumerator ExitThrowsWhenTransitionModeIsNone()
         {
             SceneState state = new SceneState
             {
@@ -54,12 +52,24 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
                 Name = "SampleScene",
             };
 
-            Assert.Throws<InvalidEnumArgumentException>(() =>
-                state
-                    .Exit(null, new ProgressRecorder(), StateDirection.Backward)
-                    .GetAwaiter()
-                    .GetResult()
+            yield return AssertFaultedAsync(
+                state.Exit(null, new ProgressRecorder(), StateDirection.Backward),
+                typeof(InvalidEnumArgumentException)
             );
+        }
+
+        private static IEnumerator AssertFaultedAsync(ValueTask valueTask, Type expectedExceptionType)
+        {
+            Task task = valueTask.AsTask();
+            while (!task.IsCompleted)
+            {
+                yield return null;
+            }
+
+            Assert.IsTrue(task.IsFaulted);
+            Assert.IsNotNull(task.Exception);
+            Assert.IsNotNull(task.Exception.InnerException);
+            Assert.IsInstanceOf(expectedExceptionType, task.Exception.InnerException);
         }
 
         private sealed class ProgressRecorder : IProgress<float>

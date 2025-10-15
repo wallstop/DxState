@@ -25,19 +25,16 @@
    Added a FIFO transition queue inside `StateStack` so overlapping push/pop requests are sequenced automatically; awaiting callers receive completion tasks instead of exceptions, and `WaitForTransitionCompletionAsync` now accounts for queued work. Regression coverage verifies that back-to-back `PushAsync` calls succeed without manual debouncing.  
    *Outcome*: Simplifies external code and prevents runtime exceptions in busy gameplay loops.
 
-7. **Improve observability and debugging ergonomics (P1)**  
-   *Problem*: There is no runtime visualization of the stack, progress, or current state, making triage slow.  
-   *Actions*: Add an editor window or in-game gizmo that lists the active stack, transition history, and pending requests; emit richer logs (include stack snapshots) when `LogStateTransitions` or diagnostics flags are on.  
+7. **Improve observability and debugging ergonomics (P1) — Completed**  
+   Instrumented the stack with `StateStackDiagnostics`, exposing transition history and progress snapshots via `StateStackManager.Diagnostics`. Added optional logging, a runtime overlay (`StateStackDiagnosticsOverlay`), and a sample prefab wiring everything together, plus regression tests validating diagnostics history.  
    *Outcome*: Faster diagnosis, especially when onboarding teams or debugging complex flows.
 
-8. **Rationalize the messaging surface (P1)**  
-   *Problem*: Some messages (e.g., `Runtime/State/Stack/Messages/StateStackHistoryRemovedMessage.cs`) are never emitted, while others lack payload clarity (fields named `previous`/`current` without docs).  
-   *Actions*: Audit which events are truly needed, remove or implement the unused ones, and add XML summaries or documentation attributes describing payload semantics and timing.  
+8. **Rationalize the messaging surface (P1) — Completed**  
+   Removed the unused `StateStackHistoryRemovedMessage`, documented each remaining message with XML summaries and strongly-named accessors, and expanded the README to describe when each event fires.  
    *Outcome*: Messaging consumers know which contracts to rely on and avoid dead code paths.
 
-9. **Trim per-transition allocations (P2)**  
-   *Problem*: Calls like `_stack.GetRange` in `StateStack.InternalRemoveAsync()` and repeated `new Progress<float>` allocations in `StateGroup` introduce unnecessary GC churn.  
-   *Actions*: Replace `GetRange` with span-like iteration, reuse progress reporters via pooling, and prefer `ValueTask`-based orchestration without allocating lists when operating sequentially.  
+9. **Trim per-transition allocations (P2) — Completed**  
+   Replaced `GetRange` copies in `StateStack.InternalRemoveAsync` with reusable buffers, pooled parallel-progress reporting in `StateGroup` via a custom aggregator backed by `ArrayPool<float>`, and removed per-call `Progress<float>`/`List<Task>` churn.  
    *Outcome*: Keeps the system responsive in projects with frequent transitions or limited platforms (Quest, mobile).
 
 10. **Tighten async utilities around `AsyncOperation` (P2)**  

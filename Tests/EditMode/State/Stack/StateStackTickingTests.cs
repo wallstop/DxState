@@ -1,9 +1,12 @@
-namespace WallstopStudios.DxState.Tests.Editor.State.Stack
+namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
 {
     using System;
+    using System.Collections;
     using System.Collections.Generic;
     using System.Threading.Tasks;
     using NUnit.Framework;
+    using UnityEngine;
+    using UnityEngine.TestTools;
     using WallstopStudios.DxState.State.Stack;
 
     public sealed class StateStackTickingTests
@@ -16,14 +19,14 @@ namespace WallstopStudios.DxState.Tests.Editor.State.Stack
             TimeUtility.ResetTime();
         }
 
-        [Test]
-        public void UpdateTicksActiveStateWithDeltaTime()
+        [UnityTest]
+        public IEnumerator UpdateTicksActiveStateWithDeltaTime()
         {
             StateStack stateStack = new StateStack();
             TestState activeState = new TestState("Active", TickMode.Update, false);
-            stateStack.PushAsync(activeState).GetAwaiter().GetResult();
+            yield return WaitForValueTask(stateStack.PushAsync(activeState));
 
-            float expectedDelta = UnityEngine.Time.deltaTime;
+            float expectedDelta = Time.deltaTime;
             stateStack.Update();
 
             Assert.AreEqual(1, activeState.TickCount);
@@ -31,14 +34,14 @@ namespace WallstopStudios.DxState.Tests.Editor.State.Stack
             Assert.AreEqual(expectedDelta, activeState.LastTickDelta, FloatTolerance);
         }
 
-        [Test]
-        public void FixedUpdateTicksActiveStateWithFixedDeltaTime()
+        [UnityTest]
+        public IEnumerator FixedUpdateTicksActiveStateWithFixedDeltaTime()
         {
             StateStack stateStack = new StateStack();
             TestState activeState = new TestState("Active", TickMode.FixedUpdate, false);
-            stateStack.PushAsync(activeState).GetAwaiter().GetResult();
+            yield return WaitForValueTask(stateStack.PushAsync(activeState));
 
-            float expectedDelta = UnityEngine.Time.fixedDeltaTime;
+            float expectedDelta = Time.fixedDeltaTime;
             stateStack.FixedUpdate();
 
             Assert.AreEqual(1, activeState.TickCount);
@@ -46,14 +49,14 @@ namespace WallstopStudios.DxState.Tests.Editor.State.Stack
             Assert.AreEqual(expectedDelta, activeState.LastTickDelta, FloatTolerance);
         }
 
-        [Test]
-        public void LateUpdateTicksActiveStateWithDeltaTime()
+        [UnityTest]
+        public IEnumerator LateUpdateTicksActiveStateWithDeltaTime()
         {
             StateStack stateStack = new StateStack();
             TestState activeState = new TestState("Active", TickMode.LateUpdate, false);
-            stateStack.PushAsync(activeState).GetAwaiter().GetResult();
+            yield return WaitForValueTask(stateStack.PushAsync(activeState));
 
-            float expectedDelta = UnityEngine.Time.deltaTime;
+            float expectedDelta = Time.deltaTime;
             stateStack.LateUpdate();
 
             Assert.AreEqual(1, activeState.TickCount);
@@ -61,8 +64,8 @@ namespace WallstopStudios.DxState.Tests.Editor.State.Stack
             Assert.AreEqual(expectedDelta, activeState.LastTickDelta, FloatTolerance);
         }
 
-        [Test]
-        public void UpdateTicksInactiveStatesRespectingTickWhenInactive()
+        [UnityTest]
+        public IEnumerator UpdateTicksInactiveStatesRespectingTickWhenInactive()
         {
             StateStack stateStack = new StateStack();
             TestState inactiveTickingState = new TestState(
@@ -73,17 +76,32 @@ namespace WallstopStudios.DxState.Tests.Editor.State.Stack
             TestState inactiveSilentState = new TestState("InactiveSilent", TickMode.Update, false);
             TestState activeState = new TestState("Active", TickMode.Update, false);
 
-            stateStack.PushAsync(inactiveTickingState).GetAwaiter().GetResult();
-            stateStack.PushAsync(inactiveSilentState).GetAwaiter().GetResult();
-            stateStack.PushAsync(activeState).GetAwaiter().GetResult();
+            yield return WaitForValueTask(stateStack.PushAsync(inactiveTickingState));
+            yield return WaitForValueTask(stateStack.PushAsync(inactiveSilentState));
+            yield return WaitForValueTask(stateStack.PushAsync(activeState));
 
-            float expectedDelta = UnityEngine.Time.deltaTime;
+            float expectedDelta = Time.deltaTime;
             stateStack.Update();
 
             Assert.AreEqual(1, activeState.TickCount);
             Assert.AreEqual(1, inactiveTickingState.TickCount);
             Assert.AreEqual(0, inactiveSilentState.TickCount);
             Assert.AreEqual(expectedDelta, inactiveTickingState.LastTickDelta, FloatTolerance);
+        }
+
+        private static IEnumerator WaitForValueTask(ValueTask valueTask)
+        {
+            Task task = valueTask.AsTask();
+            while (!task.IsCompleted)
+            {
+                yield return null;
+            }
+            if (task.IsFaulted)
+            {
+                Exception exception = task.Exception;
+                Exception inner = exception != null ? exception.InnerException : null;
+                throw inner ?? exception;
+            }
         }
 
         private sealed class TestState : IState
@@ -163,7 +181,7 @@ namespace WallstopStudios.DxState.Tests.Editor.State.Stack
         {
             public static void ResetTime()
             {
-                UnityEngine.Time.timeScale = 1f;
+                Time.timeScale = 1f;
             }
         }
     }

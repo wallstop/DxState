@@ -1,10 +1,12 @@
 namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
 {
     using System;
+    using System.Collections;
     using System.Collections.Generic;
     using System.Threading.Tasks;
     using NUnit.Framework;
     using UnityEngine;
+    using UnityEngine.TestTools;
     using WallstopStudios.DxState.State.Stack;
     using WallstopStudios.DxState.State.Stack.States;
 
@@ -16,8 +18,8 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
             Time.timeScale = 1f;
         }
 
-        [Test]
-        public void SequentialModeInvokesChildrenInOrder()
+        [UnityTest]
+        public IEnumerator SequentialModeInvokesChildrenInOrder()
         {
             List<string> enterOrder = new List<string>();
             TestState childA = new TestState("ChildA", enterOrder);
@@ -30,7 +32,7 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
             );
 
             ProgressRecorder progress = new ProgressRecorder();
-            group.Enter(null, progress, StateDirection.Forward).GetAwaiter().GetResult();
+            yield return WaitForValueTask(group.Enter(null, progress, StateDirection.Forward));
 
             Assert.AreEqual(2, enterOrder.Count);
             Assert.AreEqual("ChildA", enterOrder[0]);
@@ -38,8 +40,8 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
             Assert.AreEqual(1f, progress.LastValue, 0.0001f);
         }
 
-        [Test]
-        public void SequentialModeExitInvokesChildrenInReverseOrder()
+        [UnityTest]
+        public IEnumerator SequentialModeExitInvokesChildrenInReverseOrder()
         {
             List<string> exitOrder = new List<string>();
             TestState childA = new TestState("ChildA", null, exitOrder);
@@ -52,8 +54,8 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
             );
 
             ProgressRecorder progress = new ProgressRecorder();
-            group.Enter(null, progress, StateDirection.Forward).GetAwaiter().GetResult();
-            group.Exit(null, progress, StateDirection.Backward).GetAwaiter().GetResult();
+            yield return WaitForValueTask(group.Enter(null, progress, StateDirection.Forward));
+            yield return WaitForValueTask(group.Exit(null, progress, StateDirection.Backward));
 
             Assert.AreEqual(2, exitOrder.Count);
             Assert.AreEqual("ChildB", exitOrder[0]);
@@ -80,8 +82,8 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
             Assert.AreEqual(1, childB.TickCount);
         }
 
-        [Test]
-        public void RemoveInvokesChildRemove()
+        [UnityTest]
+        public IEnumerator RemoveInvokesChildRemove()
         {
             TestState childA = new TestState("ChildA", null, null, TickMode.None);
             TestState childB = new TestState("ChildB", null, null, TickMode.None);
@@ -93,12 +95,29 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
             );
 
             ProgressRecorder progress = new ProgressRecorder();
-            group.Enter(null, progress, StateDirection.Forward).GetAwaiter().GetResult();
-            group.Remove(Array.Empty<IState>(), Array.Empty<IState>(), progress).GetAwaiter().GetResult();
+            yield return WaitForValueTask(group.Enter(null, progress, StateDirection.Forward));
+            yield return WaitForValueTask(
+                group.Remove(Array.Empty<IState>(), Array.Empty<IState>(), progress)
+            );
 
             Assert.AreEqual(1, childA.RemoveCount);
             Assert.AreEqual(1, childB.RemoveCount);
             Assert.AreEqual(1f, progress.LastValue, 0.0001f);
+        }
+
+        private static IEnumerator WaitForValueTask(ValueTask valueTask)
+        {
+            Task task = valueTask.AsTask();
+            while (!task.IsCompleted)
+            {
+                yield return null;
+            }
+            if (task.IsFaulted)
+            {
+                Exception exception = task.Exception;
+                Exception inner = exception != null ? exception.InnerException : null;
+                throw inner ?? exception;
+            }
         }
 
         private sealed class TestState : IState

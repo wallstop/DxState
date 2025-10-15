@@ -1,0 +1,1 @@
+Sample test data for async resource loading.

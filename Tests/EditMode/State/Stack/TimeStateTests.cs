@@ -1,10 +1,12 @@
 namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
 {
     using System;
+    using System.Collections;
     using System.Collections.Generic;
     using System.Threading.Tasks;
     using NUnit.Framework;
     using UnityEngine;
+    using UnityEngine.TestTools;
     using WallstopStudios.DxState.State.Stack;
     using WallstopStudios.DxState.State.Stack.States;
 
@@ -24,55 +26,72 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
             Time.timeScale = _originalTimeScale;
         }
 
-        [Test]
-        public void EnterSetsTimeScale()
+        [UnityTest]
+        public IEnumerator EnterSetsTimeScale()
         {
             TimeState state = new TimeState("Slow", 0.5f);
-            state.Enter(null, new ProgressRecorder(), StateDirection.Forward).GetAwaiter().GetResult();
+            yield return WaitForValueTask(state.Enter(null, new ProgressRecorder(), StateDirection.Forward));
             Assert.AreEqual(0.5f, Time.timeScale, 0.0001f);
         }
 
-        [Test]
-        public void ExitBackwardRestoresPreviousTimeScale()
+        [UnityTest]
+        public IEnumerator ExitBackwardRestoresPreviousTimeScale()
         {
             TimeState state = new TimeState("Freeze", 0.25f);
-            state.Enter(null, new ProgressRecorder(), StateDirection.Forward).GetAwaiter().GetResult();
-
-            state.Exit(null, new ProgressRecorder(), StateDirection.Backward).GetAwaiter().GetResult();
+            ProgressRecorder progress = new ProgressRecorder();
+            yield return WaitForValueTask(state.Enter(null, progress, StateDirection.Forward));
+            yield return WaitForValueTask(state.Exit(null, progress, StateDirection.Backward));
 
             Assert.AreEqual(_originalTimeScale, Time.timeScale, 0.0001f);
         }
 
-        [Test]
-        public void RemoveWithoutFutureTimeStatesRestoresPreviousScale()
+        [UnityTest]
+        public IEnumerator RemoveWithoutFutureTimeStatesRestoresPreviousScale()
         {
             TimeState state = new TimeState("Slow", 0.5f);
-            state.Enter(null, new ProgressRecorder(), StateDirection.Forward).GetAwaiter().GetResult();
+            ProgressRecorder progress = new ProgressRecorder();
+            yield return WaitForValueTask(state.Enter(null, progress, StateDirection.Forward));
 
-            state.Remove(
-                Array.Empty<IState>(),
-                Array.Empty<IState>(),
-                new ProgressRecorder()
-            ).GetAwaiter().GetResult();
+            yield return WaitForValueTask(
+                state.Remove(Array.Empty<IState>(), Array.Empty<IState>(), progress)
+            );
 
             Assert.AreEqual(_originalTimeScale, Time.timeScale, 0.0001f);
         }
 
-        [Test]
-        public void RemoveWithFutureTimeStateTransfersPreviousScale()
+        [UnityTest]
+        public IEnumerator RemoveWithFutureTimeStateTransfersPreviousScale()
         {
             TimeState lowerState = new TimeState("Lower", 0.5f);
             TimeState activeState = new TimeState("Active", 0.25f);
+            ProgressRecorder progress = new ProgressRecorder();
 
-            lowerState.Enter(null, new ProgressRecorder(), StateDirection.Forward).GetAwaiter().GetResult();
-            activeState.Enter(lowerState, new ProgressRecorder(), StateDirection.Forward).GetAwaiter().GetResult();
+            yield return WaitForValueTask(lowerState.Enter(null, progress, StateDirection.Forward));
+            yield return WaitForValueTask(activeState.Enter(lowerState, progress, StateDirection.Forward));
 
             List<IState> nextStates = new List<IState> { activeState };
-            lowerState.Remove(Array.Empty<IState>(), nextStates, new ProgressRecorder()).GetAwaiter().GetResult();
+            yield return WaitForValueTask(
+                lowerState.Remove(Array.Empty<IState>(), nextStates, progress)
+            );
 
-            activeState.Exit(null, new ProgressRecorder(), StateDirection.Backward).GetAwaiter().GetResult();
+            yield return WaitForValueTask(activeState.Exit(null, progress, StateDirection.Backward));
 
             Assert.AreEqual(_originalTimeScale, Time.timeScale, 0.0001f);
+        }
+
+        private static IEnumerator WaitForValueTask(ValueTask valueTask)
+        {
+            Task task = valueTask.AsTask();
+            while (!task.IsCompleted)
+            {
+                yield return null;
+            }
+            if (task.IsFaulted)
+            {
+                Exception exception = task.Exception;
+                Exception inner = exception != null ? exception.InnerException : null;
+                throw inner ?? exception;
+            }
         }
 
         private sealed class ProgressRecorder : IProgress<float>

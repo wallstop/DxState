@@ -33,6 +33,8 @@ namespace WallstopStudios.DxState.State.Stack
         private readonly Progress<float> _noOpProgress;
         private TaskCompletionSource<bool> _transitionWaiter;
         private readonly Queue<QueuedTransition> _transitionQueue = new();
+        private readonly List<IState> _removalPreviousBuffer = new();
+        private readonly List<IState> _removalNextBuffer = new();
 
         private readonly Func<IState, IProgress<float>, ValueTask> _push;
         private readonly Func<IState, IProgress<float>, ValueTask> _pop;
@@ -368,18 +370,29 @@ namespace WallstopStudios.DxState.State.Stack
 
             bool wasCurrentActiveState = removalIndex == _stack.Count - 1;
 
-            IReadOnlyList<IState> previousStatesInStackView = _stack.GetRange(0, removalIndex);
+            List<IState> previousStatesBuffer = _removalPreviousBuffer;
+            previousStatesBuffer.Clear();
+            for (int i = 0; i < removalIndex; i++)
+            {
+                previousStatesBuffer.Add(_stack[i]);
+            }
+
+            List<IState> nextStatesBuffer = _removalNextBuffer;
             IReadOnlyList<IState> nextStatesInStackView;
             if (wasCurrentActiveState)
             {
                 nextStatesInStackView = Array.Empty<IState>();
+                nextStatesBuffer.Clear();
             }
             else
             {
-                nextStatesInStackView = _stack.GetRange(
-                    removalIndex + 1,
-                    _stack.Count - removalIndex - 1
-                );
+                nextStatesBuffer.Clear();
+                for (int i = removalIndex + 1; i < _stack.Count; i++)
+                {
+                    nextStatesBuffer.Add(_stack[i]);
+                }
+
+                nextStatesInStackView = nextStatesBuffer;
             }
 
             if (wasCurrentActiveState)
@@ -388,7 +401,7 @@ namespace WallstopStudios.DxState.State.Stack
 
                 ScopedProgress removeMethodProgress = new(overallProgress, 0f, 0.4f);
                 await stateToRemove.Remove(
-                    previousStatesInStackView,
+                    previousStatesBuffer,
                     nextStatesInStackView,
                     removeMethodProgress
                 );
@@ -408,7 +421,7 @@ namespace WallstopStudios.DxState.State.Stack
             {
                 ScopedProgress removeMethodProgress = new(overallProgress, 0f, 1.0f);
                 await stateToRemove.Remove(
-                    previousStatesInStackView,
+                    previousStatesBuffer,
                     nextStatesInStackView,
                     removeMethodProgress
                 );
@@ -416,6 +429,8 @@ namespace WallstopStudios.DxState.State.Stack
                 _stack.RemoveAt(removalIndex);
             }
 
+            previousStatesBuffer.Clear();
+            nextStatesBuffer.Clear();
             OnStateManuallyRemoved?.Invoke(stateToRemove);
         }
 

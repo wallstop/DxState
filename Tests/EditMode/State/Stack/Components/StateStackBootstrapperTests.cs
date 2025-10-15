@@ -15,11 +15,10 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Components
             GameObject stackObject = new GameObject("StateStack_Bootstrap_Test");
             StateStackManager manager = (StateStackManager)
                 stackObject.AddComponent(typeof(StateStackManager));
-            stackObject.AddComponent<StateStackBootstrapper>();
             TestGameState testState = stackObject.AddComponent<TestGameState>();
+            stackObject.AddComponent<StateStackBootstrapper>();
 
-            yield return null;
-            yield return null;
+            yield return WaitForCurrentState(manager, testState);
 
             Assert.IsNotNull(
                 stackObject.GetComponent<global::DxMessaging.Unity.MessagingComponent>(),
@@ -30,8 +29,18 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Components
                 "Expected test state to be registered"
             );
             Assert.AreSame(testState, manager.CurrentState);
+            Assert.IsNotNull(manager.Diagnostics);
+            Assert.Greater(manager.Diagnostics.Events.Count, 0);
 
             Object.DestroyImmediate(stackObject);
+        }
+
+        private static IEnumerator WaitForCurrentState(StateStackManager manager, IState targetState)
+        {
+            while (!ReferenceEquals(manager.CurrentState, targetState))
+            {
+                yield return null;
+            }
         }
 
         private sealed class TestGameState : GameState

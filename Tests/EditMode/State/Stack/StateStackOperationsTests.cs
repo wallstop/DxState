@@ -11,14 +11,8 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
 
     public sealed class StateStackOperationsTests
     {
-        [SetUp]
-        public void SetUp()
-        {
-            UnityEngine.Time.timeScale = 1f;
-        }
-
-        [Test]
-        public void PushAsyncRegistersStateAndRaisesEvents()
+        [UnityTest]
+        public IEnumerator PushAsyncRegistersStateAndRaisesEvents()
         {
             StateStack stateStack = new StateStack();
             TestState initialState = new TestState("Initial");
@@ -46,9 +40,9 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
                 progressValues.Add(progress);
             };
 
-            stateStack.PushAsync(initialState).GetAwaiter().GetResult();
-            stateStack.PushAsync(nextState).GetAwaiter().GetResult();
-            stateStack.WaitForTransitionCompletionAsync().GetAwaiter().GetResult();
+            yield return WaitForValueTask(stateStack.PushAsync(initialState));
+            yield return WaitForValueTask(stateStack.PushAsync(nextState));
+            yield return WaitForValueTask(stateStack.WaitForTransitionCompletionAsync());
 
             Assert.AreSame(nextState, stateStack.CurrentState);
             Assert.AreSame(initialState, stateStack.PreviousState);
@@ -74,15 +68,15 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
             Assert.AreEqual(1f, observedProgress, 0.0001f);
         }
 
-        [Test]
-        public void PopAsyncRemovesStateAndRestoresPrevious()
+        [UnityTest]
+        public IEnumerator PopAsyncRemovesStateAndRestoresPrevious()
         {
             StateStack stateStack = new StateStack();
             TestState stateA = new TestState("StateA");
             TestState stateB = new TestState("StateB");
 
-            stateStack.PushAsync(stateA).GetAwaiter().GetResult();
-            stateStack.PushAsync(stateB).GetAwaiter().GetResult();
+            yield return WaitForValueTask(stateStack.PushAsync(stateA));
+            yield return WaitForValueTask(stateStack.PushAsync(stateB));
 
             List<StateTransitionEvent> poppedEvents = new List<StateTransitionEvent>();
             stateStack.OnStatePopped += (previous, current) =>
@@ -90,37 +84,39 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
                 poppedEvents.Add(new StateTransitionEvent(previous, current));
             };
 
-            IState popped = stateStack.PopAsync().GetAwaiter().GetResult();
+            IState poppedState = null;
+            yield return WaitForValueTask(stateStack.PopAsync(), value => poppedState = value);
 
-            Assert.AreSame(stateB, popped);
+            Assert.AreSame(stateB, poppedState);
             Assert.AreSame(stateA, stateStack.CurrentState);
             Assert.AreEqual(1, poppedEvents.Count);
             Assert.AreSame(stateB, poppedEvents[0].Previous);
             Assert.AreSame(stateA, poppedEvents[0].Current);
         }
 
-        [Test]
-        public void TryPopAsyncOnEmptyReturnsNull()
+        [UnityTest]
+        public IEnumerator TryPopAsyncOnEmptyReturnsNull()
         {
             StateStack stateStack = new StateStack();
-            IState result = stateStack.TryPopAsync().GetAwaiter().GetResult();
+            IState result = null;
+            yield return WaitForValueTask(stateStack.TryPopAsync(), value => result = value);
             Assert.IsNull(result);
         }
 
-        [Test]
-        public void FlattenAsyncReactivatesTargetState()
+        [UnityTest]
+        public IEnumerator FlattenAsyncReactivatesTargetState()
         {
             StateStack stateStack = new StateStack();
             TestState baseState = new TestState("Base");
             TestState topState = new TestState("Top");
 
-            stateStack.PushAsync(baseState).GetAwaiter().GetResult();
-            stateStack.PushAsync(topState).GetAwaiter().GetResult();
+            yield return WaitForValueTask(stateStack.PushAsync(baseState));
+            yield return WaitForValueTask(stateStack.PushAsync(topState));
 
             List<IState> flattenedTargets = new List<IState>();
             stateStack.OnFlattened += target => flattenedTargets.Add(target);
 
-            stateStack.FlattenAsync(baseState).GetAwaiter().GetResult();
+            yield return WaitForValueTask(stateStack.FlattenAsync(baseState));
 
             Assert.AreEqual(1, flattenedTargets.Count);
             Assert.AreSame(baseState, flattenedTargets[0]);
@@ -128,22 +124,22 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
             Assert.AreEqual(1, stateStack.Stack.Count);
         }
 
-        [Test]
-        public void RemoveAsyncNonTopStateRaisesManualRemovalEvent()
+        [UnityTest]
+        public IEnumerator RemoveAsyncNonTopStateRaisesManualRemovalEvent()
         {
             StateStack stateStack = new StateStack();
             TestState lowerState = new TestState("Lower");
             TestState middleState = new TestState("Middle");
             TestState upperState = new TestState("Upper");
 
-            stateStack.PushAsync(lowerState).GetAwaiter().GetResult();
-            stateStack.PushAsync(middleState).GetAwaiter().GetResult();
-            stateStack.PushAsync(upperState).GetAwaiter().GetResult();
+            yield return WaitForValueTask(stateStack.PushAsync(lowerState));
+            yield return WaitForValueTask(stateStack.PushAsync(middleState));
+            yield return WaitForValueTask(stateStack.PushAsync(upperState));
 
             List<IState> removedStates = new List<IState>();
             stateStack.OnStateManuallyRemoved += state => removedStates.Add(state);
 
-            stateStack.RemoveAsync(middleState).GetAwaiter().GetResult();
+            yield return WaitForValueTask(stateStack.RemoveAsync(middleState));
 
             Assert.AreEqual(1, removedStates.Count);
             Assert.AreSame(middleState, removedStates[0]);
@@ -151,17 +147,17 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
             Assert.IsFalse(stateStack.Stack.Contains(middleState));
         }
 
-        [Test]
-        public void ClearAsyncEmptiesStackAndRaisesPoppedEvents()
+        [UnityTest]
+        public IEnumerator ClearAsyncEmptiesStackAndRaisesPoppedEvents()
         {
             StateStack stateStack = new StateStack();
             TestState stateOne = new TestState("One");
             TestState stateTwo = new TestState("Two");
             TestState stateThree = new TestState("Three");
 
-            stateStack.PushAsync(stateOne).GetAwaiter().GetResult();
-            stateStack.PushAsync(stateTwo).GetAwaiter().GetResult();
-            stateStack.PushAsync(stateThree).GetAwaiter().GetResult();
+            yield return WaitForValueTask(stateStack.PushAsync(stateOne));
+            yield return WaitForValueTask(stateStack.PushAsync(stateTwo));
+            yield return WaitForValueTask(stateStack.PushAsync(stateThree));
 
             List<StateTransitionEvent> poppedEvents = new List<StateTransitionEvent>();
             stateStack.OnStatePopped += (previous, current) =>
@@ -169,7 +165,7 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
                 poppedEvents.Add(new StateTransitionEvent(previous, current));
             };
 
-            stateStack.ClearAsync().GetAwaiter().GetResult();
+            yield return WaitForValueTask(stateStack.ClearAsync());
 
             Assert.AreEqual(0, stateStack.Stack.Count);
             Assert.AreEqual(3, poppedEvents.Count);
@@ -178,12 +174,11 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
             Assert.AreSame(stateOne, poppedEvents[2].Previous);
         }
 
-        [Test]
-        public void WaitForTransitionCompletionAsyncReturnsImmediatelyWhenIdle()
+        [UnityTest]
+        public IEnumerator WaitForTransitionCompletionAsyncReturnsImmediatelyWhenIdle()
         {
             StateStack stateStack = new StateStack();
-            ValueTask waitTask = stateStack.WaitForTransitionCompletionAsync();
-            Assert.IsTrue(waitTask.IsCompleted);
+            yield return WaitForValueTask(stateStack.WaitForTransitionCompletionAsync());
         }
 
         [UnityTest]
@@ -196,17 +191,47 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
             ValueTask firstPush = stateStack.PushAsync(firstState);
             ValueTask secondPush = stateStack.PushAsync(secondState);
 
-            while (!firstPush.IsCompleted)
-            {
-                yield return null;
-            }
-            while (!secondPush.IsCompleted)
-            {
-                yield return null;
-            }
+            yield return WaitForValueTask(firstPush);
+            yield return WaitForValueTask(secondPush);
 
             Assert.AreSame(secondState, stateStack.CurrentState);
-            yield break;
+        }
+
+        private static IEnumerator WaitForValueTask(ValueTask valueTask)
+        {
+            Task task = valueTask.AsTask();
+            while (!task.IsCompleted)
+            {
+                yield return null;
+            }
+            if (task.IsFaulted)
+            {
+                Exception exception = task.Exception;
+                Exception inner = exception != null ? exception.InnerException : null;
+                throw inner ?? exception;
+            }
+        }
+
+        private static IEnumerator WaitForValueTask<T>(
+            ValueTask<T> valueTask,
+            Action<T> onCompleted
+        )
+        {
+            Task<T> task = valueTask.AsTask();
+            while (!task.IsCompleted)
+            {
+                yield return null;
+            }
+            if (task.IsFaulted)
+            {
+                Exception exception = task.Exception;
+                Exception inner = exception != null ? exception.InnerException : null;
+                throw inner ?? exception;
+            }
+            if (onCompleted != null)
+            {
+                onCompleted(task.Result);
+            }
         }
 
         private sealed class TestState : IState

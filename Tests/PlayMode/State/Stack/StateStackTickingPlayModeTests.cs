@@ -20,8 +20,8 @@ namespace WallstopStudios.DxState.Tests.Runtime.State.Stack
             TestState backgroundState = new TestState("Background", TickMode.Update, true);
             TestState activeState = new TestState("Active", TickMode.Update, false);
 
-            stateStack.PushAsync(backgroundState).GetAwaiter().GetResult();
-            stateStack.PushAsync(activeState).GetAwaiter().GetResult();
+            yield return WaitForValueTask(stateStack.PushAsync(backgroundState));
+            yield return WaitForValueTask(stateStack.PushAsync(activeState));
 
             yield return null;
 
@@ -39,7 +39,7 @@ namespace WallstopStudios.DxState.Tests.Runtime.State.Stack
             StateStack stateStack = new StateStack();
             TestState activeState = new TestState("Active", TickMode.FixedUpdate, false);
 
-            stateStack.PushAsync(activeState).GetAwaiter().GetResult();
+            yield return WaitForValueTask(stateStack.PushAsync(activeState));
 
             yield return new WaitForFixedUpdate();
 
@@ -49,6 +49,21 @@ namespace WallstopStudios.DxState.Tests.Runtime.State.Stack
             Assert.AreEqual(1, activeState.TickCount);
             Assert.AreEqual(TickMode.FixedUpdate, activeState.LastTickMode);
             Assert.AreEqual(expectedDelta, activeState.LastTickDelta, FloatTolerance);
+        }
+
+        private static IEnumerator WaitForValueTask(ValueTask valueTask)
+        {
+            Task task = valueTask.AsTask();
+            while (!task.IsCompleted)
+            {
+                yield return null;
+            }
+            if (task.IsFaulted)
+            {
+                Exception exception = task.Exception;
+                Exception inner = exception != null ? exception.InnerException : null;
+                throw inner ?? exception;
+            }
         }
 
         private sealed class TestState : IState

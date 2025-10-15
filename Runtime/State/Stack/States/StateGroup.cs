@@ -1,6 +1,7 @@
 namespace WallstopStudios.DxState.State.Stack.States
 {
     using System;
+    using System.Buffers;
     using System.Collections.Generic;
     using System.ComponentModel;
     using System.Linq;
@@ -33,6 +34,8 @@ namespace WallstopStudios.DxState.State.Stack.States
             string,
             Func<IState, StateDirection, ValueTask>
         > _onChildExitFinishedCallbacks;
+        private readonly List<Task> _parallelTasks;
+        private readonly object _parallelProgressGate;
 
         private float _groupEnterTime = -1;
         private int _currentSequentialChildIndex = -1;
@@ -82,6 +85,8 @@ namespace WallstopStudios.DxState.State.Stack.States
             _onChildExitFinishedCallbacks =
                 onChildExitFinishedCallbacks
                 ?? new Dictionary<string, Func<IState, StateDirection, ValueTask>>();
+            _parallelTasks = new List<Task>(_childStates.Length);
+            _parallelProgressGate = new object();
         }
 
         public async ValueTask Enter<TProgress>(
@@ -133,48 +138,45 @@ namespace WallstopStudios.DxState.State.Stack.States
                 }
                 case StateGroupMode.Parallel:
                 {
-                    float[] childProgressValues = new float[_childStates.Length];
-                    List<Task> enterTasks = new(_childStates.Length);
-
-                    for (int i = 0; i < _childStates.Length; ++i)
+                    _parallelTasks.Clear();
+                    using (
+                        ParallelProgressAggregator aggregator = new ParallelProgressAggregator(
+                            _childStates.Length,
+                            progress,
+                            _parallelProgressGate
+                        )
+                    )
                     {
-                        IState child = _childStates[i];
-                        int capturedChildIndex = i;
-
-                        Progress<float> childSpecificProgress = new(pValue =>
+                        for (int i = 0; i < _childStates.Length; ++i)
                         {
-                            lock (childProgressValues)
-                            {
-                                childProgressValues[capturedChildIndex] = Mathf.Clamp01(pValue);
-                                progress.Report(
-                                    childProgressValues.Sum() / childProgressValues.Length
-                                );
-                            }
-                        });
+                            IState child = _childStates[i];
+                            ParallelProgressAggregator.ProgressReporter reporter =
+                                aggregator.CreateReporter(i);
 
-                        enterTasks.Add(ExecuteAndCallback());
-                        continue;
-
-                        async Task ExecuteAndCallback()
-                        {
-                            await child.Enter(
-                                previousStateOfGroup,
-                                childSpecificProgress,
-                                direction
-                            );
-                            if (
-                                _onChildEnterFinishedCallbacks.TryGetValue(
-                                    child.Name,
-                                    out Func<IState, StateDirection, ValueTask> callback
-                                )
-                            )
-                            {
-                                await callback(child, direction);
-                            }
+                            _parallelTasks.Add(ExecuteAndCallback(child, reporter).AsTask());
                         }
+
+                        await Task.WhenAll(_parallelTasks);
                     }
 
-                    await Task.WhenAll(enterTasks);
+                    _parallelTasks.Clear();
+
+                    async ValueTask ExecuteAndCallback(
+                        IState child,
+                        ParallelProgressAggregator.ProgressReporter reporter
+                    )
+                    {
+                        await child.Enter(previousStateOfGroup, reporter, direction);
+                        if (
+                            _onChildEnterFinishedCallbacks.TryGetValue(
+                                child.Name,
+                                out Func<IState, StateDirection, ValueTask> callback
+                            )
+                        )
+                        {
+                            await callback(child, direction);
+                        }
+                    }
                     break;
                 }
                 default:
@@ -245,44 +247,44 @@ namespace WallstopStudios.DxState.State.Stack.States
                 }
                 case StateGroupMode.Parallel:
                 {
-                    float[] childProgressValues = new float[_childStates.Length];
-                    List<Task> exitTasks = new(_childStates.Length);
-
-                    for (int i = 0; i < _childStates.Length; ++i)
+                    _parallelTasks.Clear();
+                    using (
+                        ParallelProgressAggregator aggregator = new ParallelProgressAggregator(
+                            _childStates.Length,
+                            progress,
+                            _parallelProgressGate
+                        )
+                    )
                     {
-                        IState child = _childStates[i];
-                        int capturedChildIndex = i;
-
-                        Progress<float> childSpecificProgress = new(pValue =>
+                        for (int i = 0; i < _childStates.Length; ++i)
                         {
-                            lock (childProgressValues)
-                            {
-                                childProgressValues[capturedChildIndex] = Mathf.Clamp01(pValue);
-                                progress.Report(
-                                    childProgressValues.Sum() / childProgressValues.Length
-                                );
-                            }
-                        });
+                            IState child = _childStates[i];
+                            ParallelProgressAggregator.ProgressReporter reporter =
+                                aggregator.CreateReporter(i);
 
-                        exitTasks.Add(ExecuteAndCallback());
-                        continue;
-
-                        async Task ExecuteAndCallback()
-                        {
-                            await child.Exit(nextStateOfGroup, childSpecificProgress, direction);
-                            if (
-                                _onChildExitFinishedCallbacks.TryGetValue(
-                                    child.Name,
-                                    out Func<IState, StateDirection, ValueTask> callback
-                                )
-                            )
-                            {
-                                await callback(child, direction);
-                            }
+                            _parallelTasks.Add(ExecuteAndCallback(child, reporter).AsTask());
                         }
+
+                        await Task.WhenAll(_parallelTasks);
                     }
 
-                    await Task.WhenAll(exitTasks);
+                    _parallelTasks.Clear();
+                    async ValueTask ExecuteAndCallback(
+                        IState child,
+                        ParallelProgressAggregator.ProgressReporter reporter
+                    )
+                    {
+                        await child.Exit(nextStateOfGroup, reporter, direction);
+                        if (
+                            _onChildExitFinishedCallbacks.TryGetValue(
+                                child.Name,
+                                out Func<IState, StateDirection, ValueTask> callback
+                            )
+                        )
+                        {
+                            await callback(child, direction);
+                        }
+                    }
                     break;
                 }
                 default:
@@ -372,51 +374,135 @@ namespace WallstopStudios.DxState.State.Stack.States
                 return;
             }
 
-            float[] childProgressValues = new float[_childStates.Length];
-            List<Task> removeTasks = new(_childStates.Length);
-
-            for (int i = 0; i < _childStates.Length; ++i)
+            switch (_mode)
             {
-                IState child = _childStates[i];
-                int capturedChildIndex = i;
-
-                Progress<float> childSpecificProgress = new(pValue =>
+                case StateGroupMode.Sequential:
                 {
-                    lock (childProgressValues)
+                    for (int i = 0; i < _childStates.Length; ++i)
                     {
-                        childProgressValues[capturedChildIndex] = Mathf.Clamp01(pValue);
-                        progress.Report(childProgressValues.Sum() / childProgressValues.Length);
-                    }
-                });
+                        IState child = _childStates[i];
+                        ScopedProgress childProgress = new(
+                            progress,
+                            i / (float)_childStates.Length,
+                            1f / _childStates.Length
+                        );
 
-                Task childTask = child
-                    .Remove(previousStatesInStack, nextStatesInStack, childSpecificProgress)
-                    .AsTask();
-                switch (_mode)
-                {
-                    case StateGroupMode.Sequential:
-                    {
-                        await childTask;
-                        break;
-                    }
-                    case StateGroupMode.Parallel:
-                    {
-                        removeTasks.Add(childTask);
-                        break;
-                    }
-                    default:
-                    {
-                        throw new InvalidEnumArgumentException(
-                            nameof(_mode),
-                            (int)_mode,
-                            typeof(StateGroupMode)
+                        await child.Remove(
+                            previousStatesInStack,
+                            nextStatesInStack,
+                            childProgress
                         );
                     }
+
+                    progress.Report(1f);
+                    _currentSequentialChildIndex = -1;
+                    break;
+                }
+                case StateGroupMode.Parallel:
+                {
+                    _parallelTasks.Clear();
+                    using (
+                        ParallelProgressAggregator aggregator = new ParallelProgressAggregator(
+                            _childStates.Length,
+                            progress,
+                            _parallelProgressGate
+                        )
+                    )
+                    {
+                        for (int i = 0; i < _childStates.Length; ++i)
+                        {
+                            IState child = _childStates[i];
+                            ParallelProgressAggregator.ProgressReporter reporter =
+                                aggregator.CreateReporter(i);
+
+                            _parallelTasks.Add(
+                                child.Remove(previousStatesInStack, nextStatesInStack, reporter).AsTask()
+                            );
+                        }
+
+                        await Task.WhenAll(_parallelTasks);
+                    }
+
+                    _parallelTasks.Clear();
+                    progress.Report(1f);
+                    _currentSequentialChildIndex = -1;
+                    break;
+                }
+                default:
+                {
+                    throw new InvalidEnumArgumentException(
+                        nameof(_mode),
+                        (int)_mode,
+                        typeof(StateGroupMode)
+                    );
                 }
             }
-            await Task.WhenAll(removeTasks);
-            progress.Report(1f);
-            _currentSequentialChildIndex = -1;
+        }
+
+        private sealed class ParallelProgressAggregator : IDisposable
+        {
+            private readonly float[] _values;
+            private readonly IProgress<float> _overallProgress;
+            private readonly object _gate;
+            private readonly int _length;
+            private float _sum;
+
+            public ParallelProgressAggregator(
+                int length,
+                IProgress<float> overallProgress,
+                object gate
+            )
+            {
+                _values = ArrayPool<float>.Shared.Rent(length);
+                _overallProgress = overallProgress;
+                _gate = gate ?? new object();
+                _length = length;
+                _sum = 0f;
+
+                for (int i = 0; i < length; i++)
+                {
+                    _values[i] = 0f;
+                }
+            }
+
+            public ProgressReporter CreateReporter(int index)
+            {
+                return new ProgressReporter(this, index);
+            }
+
+            public void Dispose()
+            {
+                ArrayPool<float>.Shared.Return(_values, true);
+            }
+
+            private void Report(int index, float value)
+            {
+                float clamped = Mathf.Clamp01(value);
+                lock (_gate)
+                {
+                    float previous = _values[index];
+                    _values[index] = clamped;
+                    _sum += clamped - previous;
+                    _overallProgress?.Report(_sum / _length);
+                }
+            }
+
+            internal readonly struct ProgressReporter : IProgress<float>
+            {
+                private readonly ParallelProgressAggregator _aggregator;
+                private readonly int _index;
+
+                public ProgressReporter(ParallelProgressAggregator aggregator, int index)
+                {
+                    _aggregator = aggregator;
+                    _index = index;
+                }
+
+                public void Report(float value)
+                {
+                    _aggregator.Report(_index, value);
+                }
+            }
         }
     }
 }

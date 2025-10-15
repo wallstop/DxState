@@ -111,6 +111,27 @@ DxState is Wallstop Studios' state management package for Unity 2021.3, combinin
     - Subscribe to untargeted DxMessaging messages such as `StatePushedMessage`, `TransitionStartMessage`, or `TransitionProgressChangedMessage` to keep UI and analytics in sync.
     - Messages are declared under `Runtime/State/Stack/Messages` and decorated with `[DxUntargetedMessage]`, so any listener can register without specifying a receiver.
 
+## Diagnostics
+
+- `StateStackManager.Diagnostics` exposes a rolling history of transitions and the latest progress values for each active state. Use it to surface history in custom tooling or logs.
+- Drop the `StateStackDiagnosticsOverlay` MonoBehaviour on the same object as `StateStackManager` (included in the sample prefab) to toggle an in-game overlay that lists the active stack and recent events (default hotkey: `F9`).
+
+## Messaging Surface
+
+`StateStackManager` mirrors key stack lifecycle moments via DxMessaging. These untargeted messages allow ancillary systems (HUD, analytics, audio) to stay informed without tight coupling:
+
+| Message | When Raised | Payload |
+| --- | --- | --- |
+| `TransitionStartMessage` | Immediately before exiting the current state | `PreviousState`, `NextState` |
+| `TransitionCompleteMessage` | After the new state finishes entering | `PreviousState`, `CurrentState` |
+| `TransitionProgressChangedMessage` | Whenever transition progress updates | `State`, `Progress (0-1)` |
+| `StatePushedMessage` | After a state is pushed | `PreviousState`, `CurrentState` |
+| `StatePoppedMessage` | After pop completes | `RemovedState`, `CurrentState` |
+| `StateManuallyRemovedMessage` | After `RemoveAsync` succeeds for a non-top state | `State` |
+| `StateStackFlattenedMessage` | After `FlattenAsync` completes | `TargetState` |
+
+Use `MessagingComponent` helpers to subscribe to these events from any GameObject.
+
 ## Runtime Architecture
 
 - **State Stack** (`StateStack`, `StateStackManager`)
