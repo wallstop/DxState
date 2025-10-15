@@ -3,6 +3,7 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
     using System;
     using System.Collections;
     using System.Collections.Generic;
+    using System.Threading.Tasks;
     using NUnit.Framework;
     using UnityEngine.TestTools;
     using WallstopStudios.DxState.State.Stack;

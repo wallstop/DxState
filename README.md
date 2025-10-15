@@ -106,7 +106,42 @@ DxState is Wallstop Studios' state management package for Unity 2021.3, combinin
 
     - The manager mirrors all `StateStack` APIs (`PushAsync`, `PopAsync`, `FlattenAsync`, `RemoveAsync`, etc.) and emits DxMessaging events automatically.
 
-4. **Respond to stack messages** (optional)
+4. **(Optional) build stack configurations fluently**
+
+    For projects that compose stacks at runtime, use `StateStackBuilder` to register states and define the initial state declaratively:
+
+    ```csharp
+    using System.Threading.Tasks;
+    using UnityEngine;
+    using WallstopStudios.DxState.State.Stack;
+    using WallstopStudios.DxState.State.Stack.Builder;
+
+    public sealed class BuilderBootstrap : MonoBehaviour
+    {
+        [SerializeField]
+        private StateStackManager _stackManager;
+
+        [SerializeField]
+        private MainMenuState _mainMenu;
+
+        [SerializeField]
+        private GameplayState _gameplay;
+
+        private async void Awake()
+        {
+            StateStackConfiguration configuration = new StateStackBuilder()
+                .WithInitialState(_mainMenu)
+                .WithState(_gameplay)
+                .Build();
+
+            await configuration.ApplyAsync(_stackManager.Stack, forceRegister: true);
+        }
+    }
+    ```
+
+    `ApplyAsync` registers every state with the stack (respecting `forceRegister`) and ensures the configured initial state is active by pushing or flattening as needed.
+
+5. **Respond to stack messages** (optional)
 
     - Subscribe to untargeted DxMessaging messages such as `StatePushedMessage`, `TransitionStartMessage`, or `TransitionProgressChangedMessage` to keep UI and analytics in sync.
     - Messages are declared under `Runtime/State/Stack/Messages` and decorated with `[DxUntargetedMessage]`, so any listener can register without specifying a receiver.
@@ -144,11 +179,16 @@ Use `MessagingComponent` helpers to subscribe to these events from any GameObjec
   - `GameState`: MonoBehaviour-based state with Unity serialization, time tracking, and message awareness.
   - `SceneState`: Orchestrates additive scene loads/unloads, with automatic reverts when popped or removed.
   - `TimeState`: Temporarily overrides `Time.timeScale`, restoring the previous value when removed or reversed.
+  - `InputModeState`: Enables and disables input action maps (requires the new Input System).
+  - `AudioSnapshotState`: Transitions to a Unity `AudioMixerSnapshot` over a configurable duration.
+  - `TimeScaleState`: Applies time-scale overrides with optional automatic revert on exit.
   - `StateGroup`: Aggregates multiple `IState` instances in sequential or parallel mode and forwards progress to child states.
 
-- **Component State Machine**
+- **Component & Trigger State Machines**
   - `StateMachine<T>` runs purely in-memory graphs using `Transition<T>` definitions and optional `IStateContext<T>` hooks.
   - `StateComponent` and `ComponentStateTransition` bring MonoBehaviour-driven transitions that cooperate with DxMessaging.
+  - `TriggerStateMachine<TState, TTrigger>` lets states decide when to transition by emitting triggers, avoiding manual `SetState` calls while still queuing transitions safely.
+  - `TransitionTriggerState<TState>` adapts existing `Transition<TState>` rule sets for trigger-driven execution.
 
 - **Messaging Integration**
   - `DxMessageAwareSingleton<T>` and `SerializedMessageAwareComponent` bootstrap messaging registrations and Odin serialization.
@@ -160,10 +200,16 @@ Use `MessagingComponent` helpers to subscribe to these events from any GameObjec
 | ---- | -------- | ------- |
 | `StateStackManager` | `Runtime/State/Stack/Components` | Singleton MonoBehaviour wrapping `StateStack`, wiring DxMessaging notifications.
 | `StateStack` | `Runtime/State/Stack` | Core stack engine with async transitions, progress reporting, and background ticking support.
+| `StateStackBuilder` | `Runtime/State/Stack/Builder` | Fluent API for registering states and ensuring an initial stack configuration.
+| `StateStackConfiguration` | `Runtime/State/Stack/Builder` | Immutable description of stack registration that can be applied at runtime.
 | `GameState` | `Runtime/State/Stack` | Base MonoBehaviour for authoring Unity-friendly states.
-| `SceneState` | `Runtime/State/Stack/States` | Declarative scene load/unload state with revert-on-exit semantics.
-| `TimeState` | `Runtime/State/Stack/States` | Time scaling utility state.
+| `SceneState` / `SceneStateFactory` | `Runtime/State/Stack/States` | Declarative scene load/unload helpers.
+| `TimeState`, `TimeScaleState` | `Runtime/State/Stack/States` and `States/Systems` | Time scaling utilities for gameplay and system-level adjustments.
+| `InputModeState` | `Runtime/State/Stack/States/Systems` | Activates input action maps while the state is active.
+| `AudioSnapshotState` | `Runtime/State/Stack/States/Systems` | Crossfades to an audio mixer snapshot during the state's lifetime.
+| `PhysicsIsolationState` | `Runtime/State/Stack/States/Systems` | Toggles collision relationships between specified physics layers.
 | `StateGroup` | `Runtime/State/Stack/States` | Sequential/parallel composition of multiple `IState` instances.
+| `TriggerStateMachine<TState, TTrigger>` | `Runtime/State/Machine/Trigger` | Trigger-driven transition scheduler for state machines.
 | `StateMachine<T>` | `Runtime/State/Machine` | Lightweight transition graph for non-stack state logic.
 
 ## Testing
