@@ -112,6 +112,126 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Machine
             Assert.IsTrue(second.IsActive);
         }
 
+        [Test]
+        public void TransitionDeferredRaisedWhenNestedTransitionQueued()
+        {
+            bool shouldTransition = false;
+            TestState first = new TestState("First");
+            TestState second = new TestState("Second");
+            TestState third = new TestState("Third");
+            Transition<TestState> toSecond = new Transition<TestState>(
+                first,
+                second,
+                () => shouldTransition
+            );
+
+            StateMachine<TestState> machine = new StateMachine<TestState>(
+                new[] { toSecond },
+                first
+            );
+
+            int deferredCount = 0;
+            machine.TransitionDeferred += (_, _, _) => deferredCount++;
+
+            second.OnEnterAction = () =>
+            {
+                machine.ForceTransition(
+                    third,
+                    new TransitionContext(TransitionCause.Manual)
+                );
+            };
+
+            shouldTransition = true;
+            machine.Update();
+
+            Assert.AreEqual(1, deferredCount);
+        }
+
+        [Test]
+        public void ConstructorThrowsWhenCurrentStateIsNull()
+        {
+            TestState validState = new TestState("Valid");
+            List<Transition<TestState>> transitions = new List<Transition<TestState>>();
+
+            Assert.Throws<ArgumentException>(
+                () => new StateMachine<TestState>(transitions, null)
+            );
+        }
+
+        [Test]
+        public void ConstructorThrowsWhenTransitionContainsNullEntry()
+        {
+            TestState initial = new TestState("Initial");
+            List<Transition<TestState>> transitions = new List<Transition<TestState>>
+            {
+                null,
+            };
+
+            Assert.Throws<ArgumentException>(
+                () => new StateMachine<TestState>(transitions, initial)
+            );
+        }
+
+        [Test]
+        public void ConstructorThrowsWhenTransitionFromStateIsNull()
+        {
+            TestState initial = new TestState("Initial");
+            TestState validTarget = new TestState("Target");
+            Transition<TestState> invalid = new Transition<TestState>(
+                null,
+                validTarget,
+                () => true
+            );
+            List<Transition<TestState>> transitions = new List<Transition<TestState>>
+            {
+                invalid,
+            };
+
+            Assert.Throws<ArgumentException>(
+                () => new StateMachine<TestState>(transitions, initial)
+            );
+        }
+
+        [Test]
+        public void ConstructorThrowsWhenTransitionToStateIsNull()
+        {
+            TestState initial = new TestState("Initial");
+            Transition<TestState> invalid = new Transition<TestState>(
+                initial,
+                null,
+                () => true
+            );
+            List<Transition<TestState>> transitions = new List<Transition<TestState>>
+            {
+                invalid,
+            };
+
+            Assert.Throws<ArgumentException>(
+                () => new StateMachine<TestState>(transitions, initial)
+            );
+        }
+
+        [Test]
+        public void ConstructorThrowsWhenDuplicateTransitionInstanceProvided()
+        {
+            TestState first = new TestState("First");
+            TestState second = new TestState("Second");
+            Transition<TestState> transition = new Transition<TestState>(
+                first,
+                second,
+                () => true
+            );
+            List<Transition<TestState>> transitions = new List<Transition<TestState>>
+            {
+                transition,
+                transition,
+            };
+
+            Assert.Throws<ArgumentException>(
+                () => new StateMachine<TestState>(transitions, first)
+            );
+        }
+
         private sealed class TestState : IStateContext<TestState>
         {
             private readonly string _name;

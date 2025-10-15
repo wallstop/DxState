@@ -46,6 +46,18 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
         }
 
         [UnityTest]
+        public IEnumerator ExitForwardRestoresPreviousTimeScale()
+        {
+            TimeState state = new TimeState("Slow", 0.5f);
+            ProgressRecorder progress = new ProgressRecorder();
+            yield return WaitForValueTask(state.Enter(null, progress, StateDirection.Forward));
+
+            yield return WaitForValueTask(state.Exit(null, progress, StateDirection.Forward));
+
+            Assert.AreEqual(_originalTimeScale, Time.timeScale, 0.0001f);
+        }
+
+        [UnityTest]
         public IEnumerator RemoveWithoutFutureTimeStatesRestoresPreviousScale()
         {
             TimeState state = new TimeState("Slow", 0.5f);
@@ -73,6 +85,8 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
             yield return WaitForValueTask(
                 lowerState.Remove(Array.Empty<IState>(), nextStates, progress)
             );
+
+            Assert.AreEqual(0.25f, Time.timeScale, 0.0001f);
 
             yield return WaitForValueTask(activeState.Exit(null, progress, StateDirection.Backward));
 

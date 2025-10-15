@@ -43,7 +43,11 @@ namespace WallstopStudios.DxState.Tests.Runtime.State.Stack
                 SceneLoaded = true,
             };
 
-            ValueTask enter = state.Enter(null, new Progress<float>(_ => { }), StateDirection.Forward);
+            ValueTask enter = state.Enter(
+                null,
+                new Progress<float>(_ => { }),
+                StateDirection.Forward
+            );
             yield return ValueTaskTestHelpers.WaitForValueTask(enter);
 
             Assert.AreEqual(0, state.LoadCallCount);
@@ -225,7 +229,7 @@ namespace WallstopStudios.DxState.Tests.Runtime.State.Stack
                 return new FakeAsyncOperation();
             }
 
-            protected override Task AwaitSceneOperationAsync(
+            protected override ValueTask AwaitSceneOperationAsync(
                 AsyncOperation operation,
                 IProgress<float> progress
             )
@@ -233,10 +237,10 @@ namespace WallstopStudios.DxState.Tests.Runtime.State.Stack
                 TaskCompletionSource<bool> completion = _pendingOperation;
                 if (completion == null)
                 {
-                    return Task.CompletedTask;
+                    return default;
                 }
 
-                return completion.Task;
+                return new ValueTask(completion.Task);
             }
 
             private enum OperationKind

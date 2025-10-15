@@ -36,7 +36,6 @@ namespace WallstopStudios.DxState.State.Stack.States
 
         private bool _isTransitioning;
         private AsyncOperation _activeOperation;
-        private Task _activeOperationTask;
         private int _activeReferenceCount;
 
         public SceneState() { }
@@ -258,14 +257,14 @@ namespace WallstopStudios.DxState.State.Stack.States
         private async ValueTask AwaitExistingOperation<TProgress>(TProgress progress)
             where TProgress : IProgress<float>
         {
-            Task activeTask = _activeOperationTask;
-            if (activeTask == null)
+            AsyncOperation activeOperation = _activeOperation;
+            if (activeOperation == null)
             {
                 ReportCompletion(progress);
                 return;
             }
 
-            await activeTask;
+            await AwaitSceneOperationAsync(activeOperation, progress);
             ReportCompletion(progress);
         }
 
@@ -282,26 +281,23 @@ namespace WallstopStudios.DxState.State.Stack.States
             }
 
             _activeOperation = operation;
-            Task awaitingTask = AwaitSceneOperationAsync(operation, progress);
-            _activeOperationTask = awaitingTask;
             try
             {
-                await awaitingTask;
+                await AwaitSceneOperationAsync(operation, progress);
                 ReportCompletion(progress);
             }
             finally
             {
                 _activeOperation = null;
-                _activeOperationTask = null;
             }
         }
 
-        protected virtual Task AwaitSceneOperationAsync(
+        protected virtual ValueTask AwaitSceneOperationAsync(
             AsyncOperation operation,
             IProgress<float> progress
         )
         {
-            return operation.AwaitWithProgress(progress, total: SceneTargetProgress).AsTask();
+            return operation.AwaitWithProgress(progress, total: SceneTargetProgress);
         }
 
         protected virtual AsyncOperation CreateLoadOperation(

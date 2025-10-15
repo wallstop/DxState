@@ -2,7 +2,6 @@ namespace WallstopStudios.DxState.State.Machine.Component
 {
     using System;
     using System.Collections.Generic;
-    using System.Linq;
     using UnityHelpers.Core.Attributes;
     using UnityHelpers.Core.Extension;
     using UnityHelpers.Tags;
@@ -11,10 +10,12 @@ namespace WallstopStudios.DxState.State.Machine.Component
 #endif
 
     [Serializable]
-    public abstract class StateComponent
-        : SerializedMessageAwareComponent,
-            IStateContext<StateComponent>
+    public abstract class StateComponent : SerializedMessageAwareComponent, IStateComponent
     {
+        private static readonly Dictionary<Type, string[]> CachedTagRestrictions =
+            new Dictionary<Type, string[]>();
+        private static readonly object TagCacheGate = new object();
+
 #if ODIN_INSPECTOR
         [ShowInInspector]
 #endif
@@ -24,13 +25,13 @@ namespace WallstopStudios.DxState.State.Machine.Component
             private set => _isActive = value;
         }
 
-        public StateMachine<StateComponent> StateMachine { get; set; }
+        public StateMachine<IStateComponent> StateMachine { get; set; }
 
 #if ODIN_INSPECTOR
         [ShowInInspector]
 #endif
         protected virtual IEnumerable<string> ImmutableUnableToEnterIfHasTag =>
-            Enumerable.Empty<string>();
+            Array.Empty<string>();
 
         [SiblingComponent(Optional = true)]
         protected TagHandler _tagHandler;
@@ -41,7 +42,7 @@ namespace WallstopStudios.DxState.State.Machine.Component
         protected override void Awake()
         {
             base.Awake();
-            _unableToEnterIfHasTag = ImmutableUnableToEnterIfHasTag.ToArray();
+            _unableToEnterIfHasTag = ResolveTagRestrictions();
         }
 
         public virtual bool ShouldEnter()
@@ -99,6 +100,86 @@ namespace WallstopStudios.DxState.State.Machine.Component
             }
 
             return _tagHandler.HasAnyTag(_unableToEnterIfHasTag);
+        }
+
+        private string[] ResolveTagRestrictions()
+        {
+            Type componentType = GetType();
+            lock (TagCacheGate)
+            {
+                if (CachedTagRestrictions.TryGetValue(componentType, out string[] cachedTags))
+                {
+                    return cachedTags;
+                }
+            }
+
+            IEnumerable<string> immutableTags = ImmutableUnableToEnterIfHasTag;
+            string[] materializedTags = SnapshotTags(immutableTags);
+
+            lock (TagCacheGate)
+            {
+                if (!CachedTagRestrictions.TryGetValue(componentType, out string[] existing))
+                {
+                    CachedTagRestrictions[componentType] = materializedTags;
+                    return materializedTags;
+                }
+
+                return existing;
+            }
+        }
+
+        private static string[] SnapshotTags(IEnumerable<string> source)
+        {
+            if (source == null)
+            {
+                return Array.Empty<string>();
+            }
+
+            if (source is string[] arraySource)
+            {
+                if (arraySource.Length == 0)
+                {
+                    return Array.Empty<string>();
+                }
+
+                return arraySource;
+            }
+
+            if (source is IReadOnlyCollection<string> readOnlyCollection)
+            {
+                if (readOnlyCollection.Count == 0)
+                {
+                    return Array.Empty<string>();
+                }
+
+                string[] buffer = new string[readOnlyCollection.Count];
+                int index = 0;
+                foreach (string tag in source)
+                {
+                    buffer[index] = tag;
+                    index++;
+                }
+                return buffer;
+            }
+
+            List<string> temporary = new List<string>();
+            foreach (string tag in source)
+            {
+                temporary.Add(tag);
+            }
+
+            if (temporary.Count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            string[] result = new string[temporary.Count];
+            for (int i = 0; i < temporary.Count; i++)
+            {
+                result[i] = temporary[i];
+            }
+
+            return result;
         }
     }
 }

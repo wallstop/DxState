@@ -59,6 +59,8 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
         private readonly Dictionary<string, float> _latestProgress;
         private readonly ReadOnlyDictionary<string, float> _latestProgressView;
         private readonly StateStackMetrics _metrics;
+        private int _transitionQueueDepth;
+        private int _deferredTransitionCount;
         private bool _isDisposed;
 
         public StateStackDiagnostics(StateStack stateStack, int maxEventCount, bool logEvents)
@@ -93,6 +95,10 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
 
         public float LongestTransitionDuration => _metrics.LongestTransitionDuration;
 
+        public int TransitionQueueDepth => _transitionQueueDepth;
+
+        public int DeferredTransitionCount => _deferredTransitionCount;
+
         public void Dispose()
         {
             if (_isDisposed)
@@ -114,6 +120,8 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
             _stateStack.OnFlattened += HandleStateFlattened;
             _stateStack.OnStateManuallyRemoved += HandleStateRemoved;
             _stateStack.OnTransitionProgress += HandleTransitionProgress;
+            _stateStack.OnTransitionQueueDepthChanged += HandleQueueDepthChanged;
+            _stateStack.OnDeferredTransitionCountChanged += HandleDeferredTransitionCountChanged;
         }
 
         private void Unsubscribe()
@@ -125,6 +133,8 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
             _stateStack.OnFlattened -= HandleStateFlattened;
             _stateStack.OnStateManuallyRemoved -= HandleStateRemoved;
             _stateStack.OnTransitionProgress -= HandleTransitionProgress;
+            _stateStack.OnTransitionQueueDepthChanged -= HandleQueueDepthChanged;
+            _stateStack.OnDeferredTransitionCountChanged -= HandleDeferredTransitionCountChanged;
         }
 
         private void HandleTransitionStart(IState previousState, IState targetState)
@@ -167,6 +177,16 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
             }
 
             _latestProgress[state.Name] = progress;
+        }
+
+        private void HandleQueueDepthChanged(int depth)
+        {
+            _transitionQueueDepth = Math.Max(0, depth);
+        }
+
+        private void HandleDeferredTransitionCountChanged(int count)
+        {
+            _deferredTransitionCount = Math.Max(0, count);
         }
 
         private void RecordEvent(

@@ -25,12 +25,54 @@ namespace WallstopStudios.DxState.State.Machine
                 throw new ArgumentNullException(nameof(transitions));
             }
 
+            if (IsInvalidStateValue(currentState))
+            {
+                throw new ArgumentException(
+                    "Current state must be a valid non-null instance.",
+                    nameof(currentState)
+                );
+            }
+
             _states = new Dictionary<T, List<Transition<T>>>();
             _pendingTransitions = new Queue<PendingTransition>();
             HashSet<T> discoveredStates = new HashSet<T>();
+            HashSet<Transition<T>> uniqueTransitions = new HashSet<Transition<T>>();
 
             foreach (Transition<T> transition in transitions)
             {
+                if (transition == null)
+                {
+                    throw new ArgumentException(
+                        "Transitions cannot contain null entries.",
+                        nameof(transitions)
+                    );
+                }
+
+                if (IsInvalidStateValue(transition.from))
+                {
+                    throw new ArgumentException(
+                        "Transition 'from' state must be a valid non-null instance.",
+                        nameof(transitions)
+                    );
+                }
+
+                if (IsInvalidStateValue(transition.to))
+                {
+                    throw new ArgumentException(
+                        "Transition 'to' state must be a valid non-null instance.",
+                        nameof(transitions)
+                    );
+                }
+
+                bool added = uniqueTransitions.Add(transition);
+                if (!added)
+                {
+                    throw new ArgumentException(
+                        "Duplicate transition instances are not allowed in the definition set.",
+                        nameof(transitions)
+                    );
+                }
+
                 List<Transition<T>> transitionsFromState = _states.GetOrAdd(transition.from);
                 transitionsFromState.Add(transition);
 
@@ -132,6 +174,17 @@ namespace WallstopStudios.DxState.State.Machine
             PendingTransition pending = new PendingTransition(newState, transition, context);
             _pendingTransitions.Enqueue(pending);
             ProcessPendingTransitions();
+        }
+
+        private static bool IsInvalidStateValue(T state)
+        {
+            Type stateType = typeof(T);
+            if (stateType.IsValueType && Nullable.GetUnderlyingType(stateType) == null)
+            {
+                return false;
+            }
+
+            return EqualityComparer<T>.Default.Equals(state, default);
         }
 
         private void ProcessPendingTransitions()

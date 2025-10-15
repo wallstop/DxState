@@ -6,6 +6,7 @@ namespace WallstopStudios.DxState.State.Stack.States
     using System.ComponentModel;
     using System.Threading.Tasks;
     using UnityEngine;
+    using WallstopStudios.DxState.Pooling;
 
     public enum StateGroupMode
     {
@@ -177,8 +178,13 @@ namespace WallstopStudios.DxState.State.Stack.States
                             _parallelProgressGate
                         )
                     )
+                    using (
+                        PooledArray<ValueTask> pooledOperations = PooledArray<ValueTask>.Rent(
+                            _childStates.Length
+                        )
+                    )
                     {
-                        ValueTask[] operations = ArrayPool<ValueTask>.Shared.Rent(_childStates.Length);
+                        ValueTask[] operations = pooledOperations.Array;
                         int scheduledCount = 0;
                         for (int i = 0; i < _childStates.Length; ++i)
                         {
@@ -186,11 +192,15 @@ namespace WallstopStudios.DxState.State.Stack.States
                             ParallelProgressAggregator.ProgressReporter reporter =
                                 aggregator.CreateReporter(i);
 
-                            operations[scheduledCount++] = ExecuteAndCallback(child, reporter);
+                            operations[scheduledCount] = ExecuteAndCallback(child, reporter);
+                            scheduledCount++;
                         }
 
                         await AwaitAll(operations, scheduledCount);
-                        ArrayPool<ValueTask>.Shared.Return(operations, clearArray: true);
+                        for (int i = 0; i < scheduledCount; i++)
+                        {
+                            operations[i] = default;
+                        }
                     }
 
                     async ValueTask ExecuteAndCallback(
@@ -286,8 +296,13 @@ namespace WallstopStudios.DxState.State.Stack.States
                             _parallelProgressGate
                         )
                     )
+                    using (
+                        PooledArray<ValueTask> pooledOperations = PooledArray<ValueTask>.Rent(
+                            _childStates.Length
+                        )
+                    )
                     {
-                        ValueTask[] operations = ArrayPool<ValueTask>.Shared.Rent(_childStates.Length);
+                        ValueTask[] operations = pooledOperations.Array;
                         int scheduledCount = 0;
                         for (int i = 0; i < _childStates.Length; ++i)
                         {
@@ -295,11 +310,15 @@ namespace WallstopStudios.DxState.State.Stack.States
                             ParallelProgressAggregator.ProgressReporter reporter =
                                 aggregator.CreateReporter(i);
 
-                            operations[scheduledCount++] = ExecuteAndCallback(child, reporter);
+                            operations[scheduledCount] = ExecuteAndCallback(child, reporter);
+                            scheduledCount++;
                         }
 
                         await AwaitAll(operations, scheduledCount);
-                        ArrayPool<ValueTask>.Shared.Return(operations, clearArray: true);
+                        for (int i = 0; i < scheduledCount; i++)
+                        {
+                            operations[i] = default;
+                        }
                     }
 
                     async ValueTask ExecuteAndCallback(
@@ -436,8 +455,13 @@ namespace WallstopStudios.DxState.State.Stack.States
                             _parallelProgressGate
                         )
                     )
+                    using (
+                        PooledArray<ValueTask> pooledOperations = PooledArray<ValueTask>.Rent(
+                            _childStates.Length
+                        )
+                    )
                     {
-                        ValueTask[] operations = ArrayPool<ValueTask>.Shared.Rent(_childStates.Length);
+                        ValueTask[] operations = pooledOperations.Array;
                         int scheduledCount = 0;
                         for (int i = 0; i < _childStates.Length; ++i)
                         {
@@ -445,12 +469,19 @@ namespace WallstopStudios.DxState.State.Stack.States
                             ParallelProgressAggregator.ProgressReporter reporter =
                                 aggregator.CreateReporter(i);
 
-                            operations[scheduledCount++] =
-                                child.Remove(previousStatesInStack, nextStatesInStack, reporter);
+                            operations[scheduledCount] = child.Remove(
+                                previousStatesInStack,
+                                nextStatesInStack,
+                                reporter
+                            );
+                            scheduledCount++;
                         }
 
                         await AwaitAll(operations, scheduledCount);
-                        ArrayPool<ValueTask>.Shared.Return(operations, clearArray: true);
+                        for (int i = 0; i < scheduledCount; i++)
+                        {
+                            operations[i] = default;
+                        }
                     }
 
                     progress.Report(1f);

@@ -95,6 +95,29 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Diagnostics
             Assert.AreEqual(0, diagnostics.Events.Count);
         }
 
+        [UnityTest]
+        public IEnumerator TracksTransitionQueueDepthAndDeferredCount()
+        {
+            StateStack stateStack = new StateStack();
+            StateStackDiagnostics diagnostics = new StateStackDiagnostics(stateStack, 8, false);
+
+            TestState first = new TestState("QueueFirst");
+            TestState second = new TestState("QueueSecond");
+
+            ValueTask firstPush = stateStack.PushAsync(first);
+            ValueTask secondPush = stateStack.PushAsync(second);
+
+            Assert.AreEqual(1, diagnostics.TransitionQueueDepth);
+            Assert.AreEqual(1, diagnostics.DeferredTransitionCount);
+
+            yield return WaitForValueTask(firstPush);
+            yield return WaitForValueTask(secondPush);
+            yield return WaitForValueTask(stateStack.WaitForTransitionCompletionAsync());
+
+            Assert.AreEqual(0, diagnostics.TransitionQueueDepth);
+            Assert.AreEqual(1, diagnostics.DeferredTransitionCount);
+        }
+
         private static IEnumerator WaitForValueTask(ValueTask valueTask)
         {
             Task task = valueTask.AsTask();

@@ -30,7 +30,10 @@ namespace WallstopStudios.DxState.State.Stack.States.Scenarios
         {
             if (string.IsNullOrWhiteSpace(name))
             {
-                throw new ArgumentException("NetworkDisconnectState requires a name.", nameof(name));
+                throw new ArgumentException(
+                    "NetworkDisconnectState requires a name.",
+                    nameof(name)
+                );
             }
 
             _disconnector = disconnector ?? throw new ArgumentNullException(nameof(disconnector));
@@ -47,7 +50,7 @@ namespace WallstopStudios.DxState.State.Stack.States.Scenarios
 
         public float? TimeInState => _timeInState >= 0 ? Time.time - _timeInState : null;
 
-        public async ValueTask Enter<TProgress>(
+        public ValueTask Enter<TProgress>(
             IState previousState,
             TProgress progress,
             StateDirection direction
@@ -56,6 +59,7 @@ namespace WallstopStudios.DxState.State.Stack.States.Scenarios
         {
             _timeInState = Time.time;
             UnityExtensions.ReportProgress(progress, 1f);
+            return default;
         }
 
         public void Tick(TickMode mode, float delta) { }
@@ -73,14 +77,20 @@ namespace WallstopStudios.DxState.State.Stack.States.Scenarios
                 return;
             }
 
-            using CancellationTokenSource timeoutSource = _timeout > TimeSpan.Zero
-                ? new CancellationTokenSource(_timeout)
-                : new CancellationTokenSource();
-            using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(timeoutSource.Token);
+            using CancellationTokenSource timeoutSource =
+                _timeout > TimeSpan.Zero
+                    ? new CancellationTokenSource(_timeout)
+                    : new CancellationTokenSource();
+            using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(
+                timeoutSource.Token
+            );
 
             try
             {
-                await _disconnector.DisconnectAsync(new ProgressRelay(progress, _progressProvider), linked.Token);
+                await _disconnector.DisconnectAsync(
+                    new ProgressRelay(progress, _progressProvider),
+                    linked.Token
+                );
                 UnityExtensions.ReportProgress(progress, 1f);
             }
             catch (OperationCanceledException)

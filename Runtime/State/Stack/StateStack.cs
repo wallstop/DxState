@@ -62,6 +62,8 @@ namespace WallstopStudios.DxState.State.Stack
         public event Action<IState> OnStateManuallyRemoved;
         public event Action<IState> OnFlattened;
         public event Action<IState, IState, Exception> OnTransitionFaulted;
+        public event Action<int> OnTransitionQueueDepthChanged;
+        public event Action<int> OnDeferredTransitionCountChanged;
 
         private readonly List<IState> _stack = new();
         private readonly Dictionary<string, IState> _statesByName = new(StringComparer.Ordinal);
@@ -80,6 +82,7 @@ namespace WallstopStudios.DxState.State.Stack
 
         private bool _isTransitioning;
         private float _latestProgress = 1f;
+        private int _totalDeferredTransitions;
 
         public StateStack()
         {
@@ -620,18 +623,23 @@ namespace WallstopStudios.DxState.State.Stack
             bool shouldInvokeTransition = true
         )
         {
-            ValueTask ExecuteTransition()
-            {
-                return ExecuteTransitionInternal(transition, targetState, context, shouldInvokeTransition);
-            }
-
+            TransitionTaskBase transitionTask = new TransitionTask<TContext>(
+                this,
+                transition,
+                targetState,
+                context,
+                shouldInvokeTransition
+            );
             if (!_isTransitioning && _transitionQueue.Count == 0)
             {
-                return ExecuteTransition();
+                return transitionTask.Execute();
             }
 
             TransitionCompletionSource completionSource = TransitionCompletionSource.Rent();
-            _transitionQueue.Enqueue(new QueuedTransition(ExecuteTransition, completionSource));
+            _transitionQueue.Enqueue(new QueuedTransition(transitionTask, completionSource));
+            OnTransitionQueueDepthChanged?.Invoke(_transitionQueue.Count);
+            _totalDeferredTransitions++;
+            OnDeferredTransitionCountChanged?.Invoke(_totalDeferredTransitions);
             TryProcessNextQueuedTransition();
             return completionSource.AsValueTask();
         }
@@ -710,12 +718,14 @@ namespace WallstopStudios.DxState.State.Stack
 
             if (_transitionQueue.Count == 0)
             {
+                OnTransitionQueueDepthChanged?.Invoke(0);
                 _transitionWaiter?.SetResult();
                 _transitionWaiter = null;
                 return;
             }
 
             QueuedTransition queuedTransition = _transitionQueue.Dequeue();
+            OnTransitionQueueDepthChanged?.Invoke(_transitionQueue.Count);
             _ = RunQueuedTransitionAsync(queuedTransition);
         }
 
@@ -723,7 +733,7 @@ namespace WallstopStudios.DxState.State.Stack
         {
             try
             {
-                await queuedTransition.Execute();
+                await queuedTransition.Task.Execute();
                 TransitionCompletionSource completionSource = queuedTransition.CompletionSource;
                 completionSource?.SetResult();
             }
@@ -734,18 +744,57 @@ namespace WallstopStudios.DxState.State.Stack
             }
         }
 
+        private abstract class TransitionTaskBase
+        {
+            public abstract ValueTask Execute();
+        }
+
+        private sealed class TransitionTask<TContext> : TransitionTaskBase
+        {
+            private readonly StateStack _owner;
+            private readonly Func<TContext, IProgress<float>, ValueTask> _transition;
+            private readonly IState _targetState;
+            private readonly TContext _context;
+            private readonly bool _shouldInvokeTransition;
+
+            public TransitionTask(
+                StateStack owner,
+                Func<TContext, IProgress<float>, ValueTask> transition,
+                IState targetState,
+                TContext context,
+                bool shouldInvokeTransition
+            )
+            {
+                _owner = owner ?? throw new ArgumentNullException(nameof(owner));
+                _transition = transition ?? throw new ArgumentNullException(nameof(transition));
+                _targetState = targetState;
+                _context = context;
+                _shouldInvokeTransition = shouldInvokeTransition;
+            }
+
+            public override ValueTask Execute()
+            {
+                return _owner.ExecuteTransitionInternal(
+                    _transition,
+                    _targetState,
+                    _context,
+                    _shouldInvokeTransition
+                );
+            }
+        }
+
         private readonly struct QueuedTransition
         {
             public QueuedTransition(
-                Func<ValueTask> execute,
+                TransitionTaskBase task,
                 TransitionCompletionSource completionSource
             )
             {
-                Execute = execute;
+                Task = task;
                 CompletionSource = completionSource;
             }
 
-            public Func<ValueTask> Execute { get; }
+            public TransitionTaskBase Task { get; }
 
             public TransitionCompletionSource CompletionSource { get; }
         }

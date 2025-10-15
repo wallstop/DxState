@@ -54,10 +54,7 @@ namespace WallstopStudios.DxState.State.Stack.States
         )
             where TProgress : IProgress<float>
         {
-            if (direction == StateDirection.Backward && 0 <= _previousTimeScale)
-            {
-                Time.timeScale = _previousTimeScale;
-            }
+            RestorePreviousTimeScale();
             _timeEntered = -1;
             return new ValueTask();
         }
@@ -75,15 +72,24 @@ namespace WallstopStudios.DxState.State.Stack.States
                 if (nextStatesInStack[i] is TimeState futureTimeState)
                 {
                     futureTimeState._previousTimeScale = _previousTimeScale;
+                    _previousTimeScale = -1f;
                     return new ValueTask();
                 }
             }
 
-            if (0 <= _previousTimeScale)
-            {
-                Time.timeScale = _previousTimeScale;
-            }
+            RestorePreviousTimeScale();
             return new ValueTask();
+        }
+
+        private void RestorePreviousTimeScale()
+        {
+            if (_previousTimeScale < 0f)
+            {
+                return;
+            }
+
+            Time.timeScale = _previousTimeScale;
+            _previousTimeScale = -1f;
         }
     }
 }

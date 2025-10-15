@@ -187,6 +187,13 @@ DxState is Wallstop Studios' state management package for Unity 2021.3, combinin
 - Drop the `StateStackDiagnosticsOverlay` MonoBehaviour on the same object as `StateStackManager` (included in the sample prefab) to toggle an in-game overlay that lists the active stack and recent events (default hotkey: `F9`).
 - Utility helpers such as `AwaitWithProgress` now support cancellation tokens while driving progress updates via a lightweight, pooled driver.
 
+## Memory Pooling
+
+- `WallstopArrayPool<T>` provides cleared buffers when you need to avoid leaking references during editor tooling or long-lived gameplay systems.
+- `WallstopFastArrayPool<T>` skips zeroing for hot paths like `StateGroup` parallel scheduling, pairing with manual resets when you own the lifecycle.
+- `PooledArray<T>` wraps the pools in a disposable scope so temporary buffers (progress aggregators, transition scratchpads) automatically return to the pool.
+- Prefer pooling for per-frame operations—composing stack transitions, snapshotting tag sets, or batching async awaits—to keep allocations out of play mode builds.
+
 ## Messaging Surface
 
 `StateStackManager` mirrors key stack lifecycle moments via DxMessaging. These untargeted messages allow ancillary systems (HUD, analytics, audio) to stay informed without tight coupling:
