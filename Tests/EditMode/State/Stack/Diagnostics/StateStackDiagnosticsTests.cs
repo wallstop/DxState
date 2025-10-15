@@ -92,6 +92,10 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Diagnostics
             {
                 yield return null;
             }
+            if (task.IsCanceled)
+            {
+                throw new OperationCanceledException();
+            }
             if (task.IsFaulted)
             {
                 Exception exception = task.Exception;
@@ -106,6 +110,10 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Diagnostics
             while (!task.IsCompleted)
             {
                 yield return null;
+            }
+            if (task.IsCanceled)
+            {
+                throw new OperationCanceledException();
             }
             if (task.IsFaulted)
             {

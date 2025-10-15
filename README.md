@@ -115,6 +115,7 @@ DxState is Wallstop Studios' state management package for Unity 2021.3, combinin
 
 - `StateStackManager.Diagnostics` exposes a rolling history of transitions and the latest progress values for each active state. Use it to surface history in custom tooling or logs.
 - Drop the `StateStackDiagnosticsOverlay` MonoBehaviour on the same object as `StateStackManager` (included in the sample prefab) to toggle an in-game overlay that lists the active stack and recent events (default hotkey: `F9`).
+- Utility helpers such as `AwaitWithProgress` now support cancellation tokens while driving progress updates via a lightweight, pooled driver.
 
 ## Messaging Surface
 

@@ -19,18 +19,18 @@ namespace WallstopStudios.DxState.Extensions
             if (operation == null)
             {
                 progressReporter?.Report(1f);
-                return ValueTask.CompletedTask;
+                return default;
             }
 
             if (cancellationToken.IsCancellationRequested)
             {
-                return ValueTask.FromCanceled(cancellationToken);
+                return new ValueTask(Task.FromCanceled(cancellationToken));
             }
 
             if (operation.isDone)
             {
                 progressReporter?.Report(operation.progress / total);
-                return ValueTask.CompletedTask;
+                return default;
             }
 
             AsyncOperationAwaiter awaiter = new AsyncOperationAwaiter(
@@ -139,7 +139,8 @@ namespace WallstopStudios.DxState.Extensions
         private sealed class AsyncOperationProgressDriver : MonoBehaviour
         {
             private static AsyncOperationProgressDriver _instance;
-            private readonly List<AsyncOperationAwaiter> _watchers = new List<AsyncOperationAwaiter>(4);
+            private readonly List<AsyncOperationAwaiter> _watchers =
+                new List<AsyncOperationAwaiter>(4);
 
             public static AsyncOperationProgressDriver Instance
             {

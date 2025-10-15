@@ -4,6 +4,7 @@ namespace WallstopStudios.DxState.Tests.EditMode.Extensions
     using System.Collections;
     using System.Collections.Generic;
     using System.Threading;
+    using System.Threading.Tasks;
     using NUnit.Framework;
     using UnityEngine;
     using UnityEngine.TestTools;
@@ -43,7 +44,9 @@ namespace WallstopStudios.DxState.Tests.EditMode.Extensions
             CancellationTokenSource cts = new CancellationTokenSource();
             cts.Cancel();
 
-            yield return ExpectCanceled(request.AwaitWithProgress(null, cancellationToken: cts.Token));
+            yield return ExpectCanceled(
+                request.AwaitWithProgress<IProgress<float>>(null, cancellationToken: cts.Token)
+            );
         }
 
         private static IEnumerator WaitForValueTask(ValueTask task)

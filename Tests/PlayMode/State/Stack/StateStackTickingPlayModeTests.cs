@@ -58,6 +58,10 @@ namespace WallstopStudios.DxState.Tests.Runtime.State.Stack
             {
                 yield return null;
             }
+            if (task.IsCanceled)
+            {
+                throw new OperationCanceledException();
+            }
             if (task.IsFaulted)
             {
                 Exception exception = task.Exception;
