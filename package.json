@@ -33,15 +33,11 @@
       "displayName": "State Stack Bootstrap",
       "description": "Prefab and helper scripts for wiring a StateStackManager with messaging integration.",
       "path": "Samples~/Bootstrap"
+    },
+    {
+      "displayName": "State Graph Builder",
+      "description": "Demonstrates building and applying multiple stack configurations with StateGraphBuilder.",
+      "path": "Samples~/StateGraph"
     }
   ]
 }
-
-
-
-
-
-
-
-
-

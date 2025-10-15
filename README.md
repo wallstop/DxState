@@ -141,7 +141,34 @@ DxState is Wallstop Studios' state management package for Unity 2021.3, combinin
 
     `ApplyAsync` registers every state with the stack (respecting `forceRegister`) and ensures the configured initial state is active by pushing or flattening as needed.
 
-5. **Respond to stack messages** (optional)
+5. **Compose multi-stack graphs** (optional)
+
+    When multiple stacks need to be bootstrapped together, use `StateGraphBuilder` to declare each stack, its states, and initial selection in a single fluent block:
+
+    ```csharp
+    StateGraph graph = new StateGraphBuilder()
+        .Stack("Menu", stack => stack
+            .Scene("MainMenu", SceneTransitionMode.Addition, setAsInitial: true)
+        )
+        .Stack("Gameplay", stack => stack
+            .State(worldBootstrap, setAsInitial: true)
+            .Group(
+                "Loading",
+                new IState[] { warmupAddressables, shaderPreload },
+                StateGroupMode.Parallel
+            )
+        )
+        .Build();
+
+    if (graph.TryGetStack("Gameplay", out StateStackConfiguration configuration))
+    {
+        await configuration.ApplyAsync(_stackManager.Stack, forceRegister: true);
+    }
+    ```
+
+    A `StateGraph` simply maps stack names to `StateStackConfiguration` instances, making it easy to apply the right registration set on demand.
+
+6. **Respond to stack messages** (optional)
 
     - Subscribe to untargeted DxMessaging messages such as `StatePushedMessage`, `TransitionStartMessage`, or `TransitionProgressChangedMessage` to keep UI and analytics in sync.
     - Messages are declared under `Runtime/State/Stack/Messages` and decorated with `[DxUntargetedMessage]`, so any listener can register without specifying a receiver.
@@ -149,6 +176,8 @@ DxState is Wallstop Studios' state management package for Unity 2021.3, combinin
 ## Diagnostics
 
 - `StateStackManager.Diagnostics` exposes a rolling history of transitions and the latest progress values for each active state. Use it to surface history in custom tooling or logs.
+- In the Editor, the custom `StateStackManager` inspector surfaces the live stack, registered states (with push/flatten controls), diagnostics, and a one-click clear button while in play mode.
+- Open **Window ▸ Wallstop Studios ▸ DxState ▸ State Stack Debugger** to monitor stacks in a dedicated editor window, push new states by name, and inspect diagnostics without selecting the manager object.
 - Drop the `StateStackDiagnosticsOverlay` MonoBehaviour on the same object as `StateStackManager` (included in the sample prefab) to toggle an in-game overlay that lists the active stack and recent events (default hotkey: `F9`).
 - Utility helpers such as `AwaitWithProgress` now support cancellation tokens while driving progress updates via a lightweight, pooled driver.
 

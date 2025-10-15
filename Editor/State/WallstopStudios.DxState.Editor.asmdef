@@ -1,7 +1,9 @@
 {
     "name": "WallstopStudios.DxState.Editor",
+    "rootNamespace": "",
     "references": [
-        "WallstopStudios.DxState"
+        "WallstopStudios.DxState",
+        "WallstopStudios.UnityHelpers"
     ],
     "includePlatforms": [
         "Editor"

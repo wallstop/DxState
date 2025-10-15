@@ -22,7 +22,7 @@ namespace WallstopStudios.DxState.State.Stack.Builder
                 throw new ArgumentNullException(nameof(state));
             }
 
-            if (_unique.Add(state))
+            if (TryAddState(state))
             {
                 _states.Add(state);
             }
@@ -53,7 +53,7 @@ namespace WallstopStudios.DxState.State.Stack.Builder
                     continue;
                 }
 
-                if (_unique.Add(state))
+                if (TryAddState(state))
                 {
                     _states.Add(state);
                 }
@@ -91,6 +91,24 @@ namespace WallstopStudios.DxState.State.Stack.Builder
             IState initial = _initialState ?? _states[0];
             IState[] snapshot = _states.ToArray();
             return new StateStackConfiguration(snapshot, initial);
+        }
+
+        private bool TryAddState(IState state)
+        {
+            if (!_unique.Add(state))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < _states.Count; i++)
+            {
+                if (ReferenceEquals(_states[i], state))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
     }
 }
