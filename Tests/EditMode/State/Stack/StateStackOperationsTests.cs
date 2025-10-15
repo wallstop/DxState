@@ -198,6 +198,37 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
         }
 
         [UnityTest]
+        public IEnumerator QueueDepthEventsReflectDeferredTransitions()
+        {
+            StateStack stateStack = new StateStack();
+            List<int> depthSnapshots = new List<int>();
+            List<int> deferredSnapshots = new List<int>();
+            stateStack.OnTransitionQueueDepthChanged += depth => depthSnapshots.Add(depth);
+            stateStack.OnDeferredTransitionCountChanged += count => deferredSnapshots.Add(count);
+
+            AsyncTestState firstState = new AsyncTestState("DepthFirst");
+            AsyncTestState secondState = new AsyncTestState("DepthSecond");
+            AsyncTestState thirdState = new AsyncTestState("DepthThird");
+
+            ValueTask firstPush = stateStack.PushAsync(firstState);
+            ValueTask secondPush = stateStack.PushAsync(secondState);
+            ValueTask thirdPush = stateStack.PushAsync(thirdState);
+
+            yield return WaitForValueTask(firstPush);
+            yield return WaitForValueTask(secondPush);
+            yield return WaitForValueTask(thirdPush);
+            yield return WaitForValueTask(stateStack.WaitForTransitionCompletionAsync());
+
+            Assert.AreSame(thirdState, stateStack.CurrentState);
+            Assert.IsNotEmpty(depthSnapshots);
+            Assert.IsTrue(depthSnapshots.Contains(1));
+            Assert.IsTrue(depthSnapshots.Contains(2));
+            Assert.AreEqual(0, depthSnapshots[^1]);
+            Assert.IsNotEmpty(deferredSnapshots);
+            Assert.AreEqual(2, deferredSnapshots[^1]);
+        }
+
+        [UnityTest]
         public IEnumerator FailedPushRaisesFaultEventAndAllowsRecovery()
         {
             StateStack stateStack = new StateStack();

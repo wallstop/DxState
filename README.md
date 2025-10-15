@@ -187,12 +187,39 @@ DxState is Wallstop Studios' state management package for Unity 2021.3, combinin
 - Drop the `StateStackDiagnosticsOverlay` MonoBehaviour on the same object as `StateStackManager` (included in the sample prefab) to toggle an in-game overlay that lists the active stack and recent events (default hotkey: `F9`).
 - Utility helpers such as `AwaitWithProgress` now support cancellation tokens while driving progress updates via a lightweight, pooled driver.
 
+## State Machine Authoring
+
+- Reach for `StateMachineBuilder<TState>` whenever you want to materialise transition graphs without manually building lists. The builder preserves unique transitions, honours the validation inside `StateMachine<T>`, and keeps the graph readable for tooling.
+
+    ```csharp
+    StateMachineBuilder<IStateComponent> builder = new StateMachineBuilder<IStateComponent>();
+    ComponentStateTransition toActive = new ComponentStateTransition(idleComponent, activeComponent);
+
+    builder.AddTransition(toActive)
+           .AddTransition(activeComponent, idleComponent, () => shouldReturnToIdle);
+
+    StateMachine<IStateComponent> machine = builder.Build(idleComponent);
+    machine.Update();
+    ```
+
+- `ComponentStateTransition` composes rule delegates with `IStateComponent.ShouldEnter`, so tag-gated components or custom predicates can block transitions even if the machine rule allows entry.
+- Prefer encapsulating component states behind `IStateComponent` implementations—MonoBehaviour subclasses inherit the helper base `StateComponent`, while plain C# states can implement the interface directly for tests and headless contexts.
+- Designers can build the same graphs visually with `StateGraphAsset` (Assets ▸ Create ▸ Wallstop Studios ▸ DxState ▸ State Graph). Each stack definition records a name, ordered `IState` references, and which entry is active by default. Call `StateGraphAsset.BuildGraph()` at runtime to obtain `StateStackConfiguration` instances and apply them to your stacks.
+- The edit-mode suites `StateMachineBuilderTests`, `StateComponentTests`, and `StateStackDiagnosticsTests` cover builder usage, component gating, and deferred queue reporting.
+
+## Time and Timescale
+
+- `TimeState` captures the previous `Time.timeScale` on enter and restores it on every exit (forward or backward) as well as nested removal paths, ensuring gameplay returns to its prior pacing even when states are removed out of order.
+- Stack multiple `TimeState` instances to create layered slow-motion effects—downstream states inherit the previous scale so rewinding the stack automatically returns to baseline.
+- Tests in `TimeStateTests` and `StateStackOperationsTests` exercise common flows; mirror their expectations whenever you extend or subclass time-affecting states.
+
 ## Memory Pooling
 
 - `WallstopArrayPool<T>` provides cleared buffers when you need to avoid leaking references during editor tooling or long-lived gameplay systems.
 - `WallstopFastArrayPool<T>` skips zeroing for hot paths like `StateGroup` parallel scheduling, pairing with manual resets when you own the lifecycle.
 - `PooledArray<T>` wraps the pools in a disposable scope so temporary buffers (progress aggregators, transition scratchpads) automatically return to the pool.
 - Prefer pooling for per-frame operations—composing stack transitions, snapshotting tag sets, or batching async awaits—to keep allocations out of play mode builds.
+- Unit tests under `Tests/EditMode/Pooling` and the expanded `StateGroupTests` demonstrate how to validate pooling behaviour without peeking into implementation details.
 
 ## Messaging Surface
 
