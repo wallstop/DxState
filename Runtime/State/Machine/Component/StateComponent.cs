@@ -32,7 +32,7 @@ namespace WallstopStudios.DxState.State.Machine.Component
         protected virtual IEnumerable<string> ImmutableUnableToEnterIfHasTag =>
             Enumerable.Empty<string>();
 
-        [SiblingComponent(optional = true)]
+        [SiblingComponent(Optional = true)]
         protected TagHandler _tagHandler;
 
         protected bool _isActive;
