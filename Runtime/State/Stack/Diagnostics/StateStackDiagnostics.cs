@@ -58,6 +58,7 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
         private readonly bool _logEvents;
         private readonly Dictionary<string, float> _latestProgress;
         private readonly ReadOnlyDictionary<string, float> _latestProgressView;
+        private readonly StateStackMetrics _metrics;
         private bool _isDisposed;
 
         public StateStackDiagnostics(StateStack stateStack, int maxEventCount, bool logEvents)
@@ -74,6 +75,7 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
             _latestProgress = new Dictionary<string, float>(StringComparer.Ordinal);
             _latestProgressView = new ReadOnlyDictionary<string, float>(_latestProgress);
 
+            _metrics = new StateStackMetrics(stateStack);
             Subscribe();
         }
 
@@ -85,6 +87,12 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
 
         public bool LoggingEnabled => _logEvents;
 
+        public int TransitionCount => _metrics.TransitionCount;
+
+        public float AverageTransitionDuration => _metrics.AverageTransitionDuration;
+
+        public float LongestTransitionDuration => _metrics.LongestTransitionDuration;
+
         public void Dispose()
         {
             if (_isDisposed)
@@ -94,6 +102,7 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
 
             _isDisposed = true;
             Unsubscribe();
+            _metrics.Dispose();
         }
 
         private void Subscribe()
@@ -194,6 +203,30 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
                     $"[DxState] {diagnosticEvent.EventType} prev='{diagnosticEvent.PreviousState}' current='{diagnosticEvent.CurrentState}' depth={diagnosticEvent.StackDepth}"
                 );
             }
+        }
+
+        public float? GetProgressForState(string stateName)
+        {
+            if (string.IsNullOrWhiteSpace(stateName))
+            {
+                return null;
+            }
+
+            if (!_latestProgress.TryGetValue(stateName, out float value))
+            {
+                return null;
+            }
+
+            return value;
+        }
+
+        public StateStackMetricSnapshot GetMetricsSnapshot()
+        {
+            return new StateStackMetricSnapshot(
+                _metrics.TransitionCount,
+                _metrics.AverageTransitionDuration,
+                _metrics.LongestTransitionDuration
+            );
         }
     }
 }

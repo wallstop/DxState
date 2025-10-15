@@ -28,6 +28,9 @@ namespace WallstopStudios.DxState.State.Stack.Components
         [Min(1)]
         private int _diagnosticHistoryCapacity = 64;
 
+        [SerializeField]
+        private Diagnostics.StateStackLoggingProfile _loggingProfile;
+
         private StateStackDiagnostics _diagnostics;
 
         protected override void Awake()
@@ -38,6 +41,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
                 _diagnosticHistoryCapacity,
                 _enableDiagnosticsLogging
             );
+            ConfigureLoggingProfile();
             _stateStack.OnStatePopped += (previous, current) =>
             {
                 StatePoppedMessage message = new(previous, current);
@@ -79,6 +83,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
         {
             _diagnostics?.Dispose();
             _diagnostics = null;
+            TeardownLoggingProfile();
             base.OnDestroy();
         }
 
@@ -165,6 +170,68 @@ namespace WallstopStudios.DxState.State.Stack.Components
         private void LateUpdate()
         {
             _stateStack.LateUpdate();
+        }
+
+        private void ConfigureLoggingProfile()
+        {
+            if (_loggingProfile == null)
+            {
+                return;
+            }
+
+            if (_loggingProfile.LogTransitions)
+            {
+                _stateStack.OnTransitionComplete += HandleLoggedTransition;
+            }
+
+            if (_loggingProfile.LogProgress)
+            {
+                _stateStack.OnTransitionProgress += HandleLoggedProgress;
+            }
+        }
+
+        private void TeardownLoggingProfile()
+        {
+            if (_loggingProfile == null)
+            {
+                return;
+            }
+
+            if (_loggingProfile.LogTransitions)
+            {
+                _stateStack.OnTransitionComplete -= HandleLoggedTransition;
+            }
+
+            if (_loggingProfile.LogProgress)
+            {
+                _stateStack.OnTransitionProgress -= HandleLoggedProgress;
+            }
+        }
+
+        private void HandleLoggedTransition(IState previous, IState current)
+        {
+            string category = !string.IsNullOrWhiteSpace(_loggingProfile?.LogCategory)
+                ? _loggingProfile.LogCategory
+                : "DxState";
+            Debug.LogFormat(
+                "[{0}] Transition complete: {1} -> {2}",
+                category,
+                previous?.Name ?? "<none>",
+                current?.Name ?? "<none>"
+            );
+        }
+
+        private void HandleLoggedProgress(IState state, float progress)
+        {
+            string category = !string.IsNullOrWhiteSpace(_loggingProfile?.LogCategory)
+                ? _loggingProfile.LogCategory
+                : "DxState";
+            Debug.LogFormat(
+                "[{0}] Progress {1:P0} ({2})",
+                category,
+                progress,
+                state?.Name ?? "<none>"
+            );
         }
     }
 }

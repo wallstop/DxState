@@ -239,8 +239,13 @@ Use `MessagingComponent` helpers to subscribe to these events from any GameObjec
 | `AudioSnapshotState` | `Runtime/State/Stack/States/Systems` | Crossfades to an audio mixer snapshot during the state's lifetime.
 | `PhysicsIsolationState` | `Runtime/State/Stack/States/Systems` | Toggles collision relationships between specified physics layers.
 | `StateGroup` | `Runtime/State/Stack/States` | Sequential/parallel composition of multiple `IState` instances.
+| `TimelineCutsceneState` | `Runtime/State/Stack/States/Scenarios` | Runs a timeline-driven cutscene with optional skip behaviour.
+| `DialogueState` | `Runtime/State/Stack/States/Scenarios` | Bridges into dialogue systems with optional skip handling.
+| `TutorialStepState` | `Runtime/State/Stack/States/Scenarios` | Polls completion predicates for tutorial steps while reporting custom progress.
+| `NetworkConnectState` / `NetworkDisconnectState` | `Runtime/State/Stack/States/Scenarios` | Coordinates network connect/disconnect attempts using user-provided connectors with optional timeouts.
 | `TriggerStateMachine<TState, TTrigger>` | `Runtime/State/Machine/Trigger` | Trigger-driven transition scheduler for state machines.
 | `StateMachine<T>` | `Runtime/State/Machine` | Lightweight transition graph for non-stack state logic.
+| `StateMachineDiagnostics<T>` | `Runtime/State/Stack/Diagnostics` | Captures recent state machine transitions for tooling and logging.
 
 ## Testing
 

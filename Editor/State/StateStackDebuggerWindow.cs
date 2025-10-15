@@ -3,7 +3,7 @@ namespace WallstopStudios.DxState.Editor.State
     using System;
     using System.Collections.Generic;
     using System.Linq;
-    using DxState.State.Stack.Diagnostics;
+    using WallstopStudios.DxState.State.Stack.Diagnostics;
     using UnityEditor;
     using UnityEngine;
     using WallstopStudios.DxState.State.Stack;

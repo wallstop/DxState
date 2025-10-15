@@ -26,8 +26,9 @@
   - Implementation available in `Runtime/State/Machine/Trigger/` with coverage in `Tests/EditMode/State/Machine/TriggerStateMachineTests.cs`.
 - [~] Build state factory helpers for scenes and common Unity flows
   - [x] Added `AsyncOperationState`, `TimelineState`, and Addressables helpers (`Runtime/State/Stack/States/AsyncOperationState.cs`, `/Addressables/`).
-  - [x] Published scenario pack states: `BootstrapState`, `LoadingScreenState`, `WarmupAddressablesState`, `ShaderPreloadState`, `ExclusiveSceneSetState`, `ChunkStreamingState`, `SceneGroupStateFactory`, `UiScreenState`, `ModalStateStack`, `VirtualCameraState`, `GameplayLoopState`.
-  - [ ] Remaining planned states (e.g. `TimelineCutsceneState`, `DialogueState`, `TutorialStepState`, networking helpers) to be evaluated and implemented.
+  - [x] Published scenario pack states: `BootstrapState`, `LoadingScreenState`, `WarmupAddressablesState`, `ShaderPreloadState`, `ExclusiveSceneSetState`, `ChunkStreamingState`, `SceneGroupStateFactory`, `UiScreenState`, `ModalStateStack`, `VirtualCameraState`, `GameplayLoopState`, `TimelineCutsceneState`, `DialogueState`, `TutorialStepState`.
+  - [x] Added network connection helper (`NetworkConnectState`) for connector-driven workflows without additional dependencies.
+  - [ ] Remaining planned states (e.g. additional networking teardown/helpers) to be evaluated and implemented.
   - [x] Tests mirror new runtime surface under `Tests/EditMode/State/Stack/` (e.g. `AsyncOperationStateTests.cs`, `AddressableAssetStateTests.cs`, `ExclusiveSceneSetStateTests.cs`).
 - [~] Authoring ergonomics & configuration DSL
   - [x] Provide a fluent builder (`StateGraphBuilder`) to declare stacks/groups/scenes in code, producing reusable stack configurations (`Runtime/State/Stack/Builder/StateGraphBuilder.cs`, `Tests/EditMode/State/Stack/StateGraphBuilderTests.cs`).
@@ -55,10 +56,11 @@
   - Added README coverage for the new `StateGraphBuilder` and inspector ergonomics (runtime snapshot controls) to aid onboarding (`README.md`).
   - Published a `State Graph Builder` sample containing a prefab, states, and bootstrap script that apply multi-stack graphs at runtime (`Samples~/StateGraph`, `package.json`).
 - [~] Improve diagnostics visibility
-  - [ ] Extend `StateStackDiagnosticsOverlay` with tabs for trigger machine metrics, progress graphs, and active scene groups.
+  - [x] Extend `StateStackDiagnosticsOverlay` with tabs for stack view, events, progress, and aggregated metrics (`Runtime/State/Stack/Components/StateStackDiagnosticsOverlay.cs`, `Runtime/State/Stack/Diagnostics/StateStackMetrics.cs`).
   - [x] Ship an editor-only assembly with a custom inspector for `StateStackManager` plus a dedicated debugger window for live stack inspection (`Editor/State/WallstopStudios.DxState.Editor.asmdef`, `Editor/State/StateStackManagerEditor.cs`, `Editor/State/StateStackDebuggerWindow.cs`).
-  - [ ] Provide play-mode toolbar controls (push/pop buttons, scene factory shortcuts) guarded by `UNITY_EDITOR` to accelerate iteration without scripting entry points.
-  - [ ] Offer a CLI/logging integration (ScriptableObject config) so teams can opt into structured logs for transitions.
+  - [x] Added `StateMachineDiagnostics<T>` helpers and attachment extension so trigger/component state machines can report recent transitions (`Runtime/State/Machine/Component/StateMachineDiagnosticsExtensions.cs`, `Tests/EditMode/State/Machine/Diagnostics/StateMachineDiagnosticsTests.cs`).
+  - [x] Provide play-mode toolbar controls (Scene View overlay with push/flatten/pop/clear) guarded by `UNITY_EDITOR` (`Editor/State/StateStackToolbarOverlay.cs`).
+  - [x] Offer a CLI/logging integration (ScriptableObject config) so teams can opt into structured logs for transitions (`Runtime/State/Stack/Diagnostics/StateStackLoggingProfile.cs`, `StateStackManager` hook-up, `StateStackLoggingTests`).
 - [~] Testing & CI scaffolding
   - [x] Mirrored the new runtime surface with edit-mode fixtures (e.g. `AsyncOperationStateTests`, `ExclusiveSceneSetStateTests`, `ChunkStreamingStateTests`).
   - [ ] Integrate Unity batchmode test execution guidance into `PLAN.md` follow-up or CI documentation to ensure contributors verify changes locally.
