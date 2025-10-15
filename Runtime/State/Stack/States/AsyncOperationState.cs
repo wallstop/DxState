@@ -101,7 +101,7 @@ namespace WallstopStudios.DxState.State.Stack.States
             }
 
             AsyncOperationStateContext context = new AsyncOperationStateContext(previousState, direction);
-            await ExecuteOperation(_callbacks.OnEnter, context, progress).ConfigureAwait(false);
+            await ExecuteOperation(_callbacks.OnEnter, context, progress);
         }
 
         public void Tick(TickMode mode, float delta)
@@ -122,7 +122,7 @@ namespace WallstopStudios.DxState.State.Stack.States
             }
 
             AsyncOperationStateContext context = new AsyncOperationStateContext(nextState, direction);
-            await ExecuteOperation(_callbacks.OnExit, context, progress).ConfigureAwait(false);
+            await ExecuteOperation(_callbacks.OnExit, context, progress);
         }
 
         public async ValueTask Remove<TProgress>(
@@ -143,7 +143,7 @@ namespace WallstopStudios.DxState.State.Stack.States
                 counterpart,
                 StateDirection.Backward
             );
-            await ExecuteOperation(_callbacks.OnRemove, context, progress).ConfigureAwait(false);
+            await ExecuteOperation(_callbacks.OnRemove, context, progress);
         }
 
         private async ValueTask ExecuteOperation<TProgress>(
@@ -178,13 +178,11 @@ namespace WallstopStudios.DxState.State.Stack.States
             {
             if (_operationAwaiter != null)
             {
-                await _operationAwaiter(operation, progress).ConfigureAwait(false);
+                await _operationAwaiter(operation, progress);
             }
             else
             {
-                await operation
-                    .AwaitWithProgress(progress)
-                    .ConfigureAwait(false);
+                await operation.AwaitWithProgress(progress);
             }
             ReportCompletion(progress);
             }

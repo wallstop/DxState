@@ -29,10 +29,10 @@
   - [x] Published scenario pack states: `BootstrapState`, `LoadingScreenState`, `WarmupAddressablesState`, `ShaderPreloadState`, `ExclusiveSceneSetState`, `ChunkStreamingState`, `SceneGroupStateFactory`, `UiScreenState`, `ModalStateStack`, `VirtualCameraState`, `GameplayLoopState`.
   - [ ] Remaining planned states (e.g. `TimelineCutsceneState`, `DialogueState`, `TutorialStepState`, networking helpers) to be evaluated and implemented.
   - [x] Tests mirror new runtime surface under `Tests/EditMode/State/Stack/` (e.g. `AsyncOperationStateTests.cs`, `AddressableAssetStateTests.cs`, `ExclusiveSceneSetStateTests.cs`).
-- [ ] Authoring ergonomics & configuration DSL
-  - Provide a fluent builder (`StateGraphBuilder`) to declare stacks/groups/scenes in code or ScriptableObjects, outputting immutable graphs consumable at runtime.
-  - Add editor tooling hooks (custom inspectors) to compose groups and preview execution order, relying on existing assembly definitions.
-  - Document interplay between factories, builders, and the new trigger machine to guide selection per use case.
+- [~] Authoring ergonomics & configuration DSL
+  - [x] Provide a fluent builder (`StateGraphBuilder`) to declare stacks/groups/scenes in code, producing reusable stack configurations (`Runtime/State/Stack/Builder/StateGraphBuilder.cs`, `Tests/EditMode/State/Stack/StateGraphBuilderTests.cs`).
+  - [ ] Add editor tooling hooks (custom inspectors) to compose groups and preview execution order, relying on existing assembly definitions.
+  - [ ] Document interplay between factories, builders, and the new trigger machine to guide selection per use case.
 
 ## Priority 2 — Performance & Allocation Optimisation
 - [x] Replace `TaskCompletionSource`-backed queues with pooled value-task sources

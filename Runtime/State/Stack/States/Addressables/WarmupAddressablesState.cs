@@ -61,10 +61,8 @@ namespace WallstopStudios.DxState.State.Stack.States.Addressables
             for (int i = 0; i < totalKeys; i++)
             {
                 string key = _keys[i];
-                IAddressableHandle<object> handle = await _adapter
-                    .LoadAssetAsync<object>(key, progress)
-                    .ConfigureAwait(false);
-                await _adapter.ReleaseAsync<object>(handle).ConfigureAwait(false);
+                IAddressableHandle<object> handle = await _adapter.LoadAssetAsync<object>(key, progress);
+                await _adapter.ReleaseAsync<object>(handle);
                 float normalizedProgress = (i + 1f) / totalKeys;
                 UnityExtensions.ReportProgress(progress, normalizedProgress);
             }

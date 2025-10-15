@@ -19,7 +19,7 @@ namespace WallstopStudios.DxState.State.Stack.States.Addressables
             {
                 operation.Completed += _ => progress.Report(1f);
             }
-            TAsset asset = await operation.Task.ConfigureAwait(false);
+            TAsset asset = await operation.Task;
             return new AddressableHandle<TAsset>(operation, asset);
         }
 
@@ -54,4 +54,3 @@ namespace WallstopStudios.DxState.State.Stack.States.Addressables
     }
 }
 #endif
-

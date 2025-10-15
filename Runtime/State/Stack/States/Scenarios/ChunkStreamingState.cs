@@ -85,7 +85,7 @@ namespace WallstopStudios.DxState.State.Stack.States.Scenarios
                 return;
             }
 
-            await UpdateChunksAsync(progress).ConfigureAwait(false);
+            await UpdateChunksAsync(progress);
         }
 
         public void Tick(TickMode mode, float delta)
@@ -112,7 +112,7 @@ namespace WallstopStudios.DxState.State.Stack.States.Scenarios
         )
             where TProgress : IProgress<float>
         {
-            await UnloadAllChunksAsync(progress).ConfigureAwait(false);
+            await UnloadAllChunksAsync(progress);
         }
 
         public async ValueTask Remove<TProgress>(
@@ -122,7 +122,7 @@ namespace WallstopStudios.DxState.State.Stack.States.Scenarios
         )
             where TProgress : IProgress<float>
         {
-            await UnloadAllChunksAsync(progress).ConfigureAwait(false);
+            await UnloadAllChunksAsync(progress);
         }
 
         private async ValueTask UpdateChunksAsync<TProgress>(TProgress progress)
@@ -156,7 +156,7 @@ namespace WallstopStudios.DxState.State.Stack.States.Scenarios
             int completed = 0;
             foreach (string chunk in toUnload)
             {
-                await _loader.EnsureUnloadedAsync(chunk, progress).ConfigureAwait(false);
+                await _loader.EnsureUnloadedAsync(chunk, progress);
                 _activeChunks.Remove(chunk);
                 completed++;
                 UnityExtensions.ReportProgress(progress, totalOperations == 0 ? 1f : completed / (float)totalOperations);
@@ -164,7 +164,7 @@ namespace WallstopStudios.DxState.State.Stack.States.Scenarios
 
             foreach (string chunk in toLoad)
             {
-                await _loader.EnsureLoadedAsync(chunk, progress).ConfigureAwait(false);
+                await _loader.EnsureLoadedAsync(chunk, progress);
                 _activeChunks.Add(chunk);
                 completed++;
                 UnityExtensions.ReportProgress(progress, totalOperations == 0 ? 1f : completed / (float)totalOperations);
@@ -190,11 +190,10 @@ namespace WallstopStudios.DxState.State.Stack.States.Scenarios
             for (int i = 0; i < count; i++)
             {
                 string chunk = chunks[i];
-                await _loader.EnsureUnloadedAsync(chunk, progress).ConfigureAwait(false);
+                await _loader.EnsureUnloadedAsync(chunk, progress);
                 _activeChunks.Remove(chunk);
                 UnityExtensions.ReportProgress(progress, (i + 1f) / count);
             }
         }
     }
 }
-

@@ -122,7 +122,7 @@ namespace WallstopStudios.DxState.State.Stack.States.Scenarios
                     sceneToUnload,
                     _unloadOptions
                 );
-                await AwaitOperation(unloadOperation, progress).ConfigureAwait(false);
+                await AwaitOperation(unloadOperation, progress);
                 completedOperations++;
                 UnityExtensions.ReportProgress(
                     progress,
@@ -141,7 +141,7 @@ namespace WallstopStudios.DxState.State.Stack.States.Scenarios
                     sceneToLoad,
                     _loadParameters
                 );
-                await AwaitOperation(loadOperation, progress).ConfigureAwait(false);
+                await AwaitOperation(loadOperation, progress);
                 completedOperations++;
                 UnityExtensions.ReportProgress(
                     progress,
@@ -187,7 +187,7 @@ namespace WallstopStudios.DxState.State.Stack.States.Scenarios
                     sceneName,
                     _unloadOptions
                 );
-                await AwaitOperation(unloadOperation, progress).ConfigureAwait(false);
+                await AwaitOperation(unloadOperation, progress);
                 UnityExtensions.ReportProgress(progress, (i + 1f) / count);
             }
 

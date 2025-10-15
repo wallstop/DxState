@@ -134,7 +134,7 @@ namespace WallstopStudios.DxState.State.Stack.States
                 _controller.Play();
                 if (_controller.IsPlaying)
                 {
-                    await completionSource.Task.ConfigureAwait(false);
+                    await completionSource.Task;
                 }
                 UnityExtensions.ReportProgress(progress, 1f);
             }

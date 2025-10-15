@@ -689,7 +689,7 @@ namespace WallstopStudios.DxState.State.Stack
         {
             try
             {
-                await operation().ConfigureAwait(false);
+                await operation();
             }
             catch (StateTransitionException)
             {
@@ -723,7 +723,7 @@ namespace WallstopStudios.DxState.State.Stack
         {
             try
             {
-                await queuedTransition.Execute().ConfigureAwait(false);
+                await queuedTransition.Execute();
                 TransitionCompletionSource completionSource = queuedTransition.CompletionSource;
                 completionSource?.SetResult();
             }

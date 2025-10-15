@@ -64,7 +64,7 @@ namespace WallstopStudios.DxState.State.Stack.States.Scenarios
                     (float)i / stepCount,
                     1f / stepCount
                 );
-                await step(stepProgress).ConfigureAwait(false);
+                await step(stepProgress);
             }
 
             UnityExtensions.ReportProgress(progress, 1f);

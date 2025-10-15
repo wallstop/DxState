@@ -37,8 +37,8 @@ namespace WallstopStudios.DxState.Tests.Runtime.State.Stack
             Assert.IsFalse(enterTask.IsCompleted);
 
             awaiter.Complete();
-            awaiter.Complete();
             yield return ValueTaskTestHelpers.WaitForValueTask(enterTask);
+            yield return null;
 
             Assert.IsNotEmpty(reportedProgress);
             Assert.AreEqual(1f, reportedProgress[^1], 0.0001f);
@@ -78,6 +78,7 @@ namespace WallstopStudios.DxState.Tests.Runtime.State.Stack
 
             awaiter.Complete();
             yield return ValueTaskTestHelpers.WaitForValueTask(first);
+            yield return null;
         }
 
         private sealed class TestAsyncOperation : AsyncOperation { }

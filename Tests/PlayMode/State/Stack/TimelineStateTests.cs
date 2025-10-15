@@ -33,6 +33,7 @@ namespace WallstopStudios.DxState.Tests.Runtime.State.Stack
 
             controller.Complete();
             yield return ValueTaskTestHelpers.WaitForValueTask(enterTask);
+            yield return null;
 
             Assert.IsTrue(controller.StoppedInvoked);
             Assert.IsNotEmpty(progressValues);
@@ -58,6 +59,7 @@ namespace WallstopStudios.DxState.Tests.Runtime.State.Stack
                 StateDirection.Backward
             );
             yield return ValueTaskTestHelpers.WaitForValueTask(exitTask);
+            yield return null;
 
             Assert.IsTrue(controller.StoppedInvoked);
         }

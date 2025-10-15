@@ -58,7 +58,7 @@ namespace WallstopStudios.DxState.State.Stack.States.Scenarios
                         continue;
                     }
 
-                    await _modalStack.PushAsync(state).ConfigureAwait(false);
+                    await _modalStack.PushAsync(state);
                 }
             }
 
@@ -78,7 +78,7 @@ namespace WallstopStudios.DxState.State.Stack.States.Scenarios
         {
             if (_clearOnExit)
             {
-                await _modalStack.ClearAsync().ConfigureAwait(false);
+                await _modalStack.ClearAsync();
             }
 
             progress?.Report(1f);
@@ -91,9 +91,8 @@ namespace WallstopStudios.DxState.State.Stack.States.Scenarios
         )
             where TProgress : IProgress<float>
         {
-            await _modalStack.ClearAsync().ConfigureAwait(false);
+            await _modalStack.ClearAsync();
             progress?.Report(1f);
         }
     }
 }
-

@@ -78,7 +78,7 @@ namespace WallstopStudios.DxState.State.Stack.States.Addressables
                 return;
             }
 
-            _handle = await _adapter.LoadAssetAsync<TAsset>(_key, progress).ConfigureAwait(false);
+            _handle = await _adapter.LoadAssetAsync<TAsset>(_key, progress);
             if (_handle == null)
             {
                 throw new InvalidOperationException(
@@ -103,7 +103,7 @@ namespace WallstopStudios.DxState.State.Stack.States.Addressables
         {
             if (_releaseOnExit)
             {
-                await ReleaseInternal(progress).ConfigureAwait(false);
+                await ReleaseInternal(progress);
             }
             else
             {
@@ -120,7 +120,7 @@ namespace WallstopStudios.DxState.State.Stack.States.Addressables
         {
             if (_releaseOnRemove)
             {
-                await ReleaseInternal(progress).ConfigureAwait(false);
+                await ReleaseInternal(progress);
             }
             else
             {
@@ -138,7 +138,7 @@ namespace WallstopStudios.DxState.State.Stack.States.Addressables
             }
 
             TAsset releasedAsset = _handle.Asset;
-            await _adapter.ReleaseAsync<TAsset>(_handle).ConfigureAwait(false);
+            await _adapter.ReleaseAsync<TAsset>(_handle);
             _handle = null;
 
             UnityExtensions.ReportProgress(progress, 1f);

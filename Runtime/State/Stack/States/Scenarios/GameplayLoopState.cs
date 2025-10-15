@@ -32,19 +32,19 @@ namespace WallstopStudios.DxState.State.Stack.States.Scenarios
                 {
                     if (direction == StateDirection.Forward)
                     {
-                        await _startGameplay().ConfigureAwait(false);
+                        await _startGameplay();
                     }
 
                     progress?.Report(1f);
                 },
                 async (direction, next, progress) =>
                 {
-                    await _returnToMenu().ConfigureAwait(false);
+                    await _returnToMenu();
                     progress?.Report(1f);
                 },
                 async (previous, next, progress) =>
                 {
-                    await _returnToMenu().ConfigureAwait(false);
+                    await _returnToMenu();
                     progress?.Report(1f);
                 }
             );

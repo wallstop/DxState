@@ -265,7 +265,7 @@ namespace WallstopStudios.DxState.State.Stack.States
                 return;
             }
 
-            await activeTask.ConfigureAwait(false);
+            await activeTask;
             ReportCompletion(progress);
         }
 
@@ -286,7 +286,7 @@ namespace WallstopStudios.DxState.State.Stack.States
             _activeOperationTask = awaitingTask;
             try
             {
-                await awaitingTask.ConfigureAwait(false);
+                await awaitingTask;
                 ReportCompletion(progress);
             }
             finally
