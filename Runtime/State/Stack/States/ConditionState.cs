@@ -3,6 +3,7 @@ namespace WallstopStudios.DxState.State.Stack.States
     using System;
     using System.Collections.Generic;
     using System.Threading.Tasks;
+    using UnityEngine;
 
     [Serializable]
     public sealed class ConditionState : IState
@@ -13,7 +14,11 @@ namespace WallstopStudios.DxState.State.Stack.States
         private readonly Func<bool> _predicate;
         private readonly Func<float> _progressEvaluator;
 
-        public ConditionState(string name, Func<bool> predicate, Func<float> progressEvaluator = null)
+        public ConditionState(
+            string name,
+            Func<bool> predicate,
+            Func<float> progressEvaluator = null
+        )
         {
             if (string.IsNullOrWhiteSpace(name))
             {

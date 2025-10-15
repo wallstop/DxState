@@ -2,6 +2,7 @@ namespace WallstopStudios.DxState.State.Stack.Internal
 {
     using System;
     using System.Runtime.CompilerServices;
+    using System.Threading.Tasks;
     using System.Threading.Tasks.Sources;
 
     internal sealed class TransitionCompletionSource : IValueTaskSource
@@ -34,10 +35,7 @@ namespace WallstopStudios.DxState.State.Stack.Internal
                 }
             }
 
-            TransitionCompletionSource created = new TransitionCompletionSource
-            {
-                _inUse = true,
-            };
+            TransitionCompletionSource created = new TransitionCompletionSource { _inUse = true };
             created._core.Reset();
             return created;
         }
