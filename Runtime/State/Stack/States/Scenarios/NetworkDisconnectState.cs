@@ -19,6 +19,7 @@ namespace WallstopStudios.DxState.State.Stack.States.Scenarios
         private readonly INetworkDisconnector _disconnector;
         private readonly TimeSpan _timeout;
         private readonly Func<float> _progressProvider;
+        private float _timeInState;
 
         public NetworkDisconnectState(
             string name,
@@ -44,7 +45,7 @@ namespace WallstopStudios.DxState.State.Stack.States.Scenarios
 
         public bool TickWhenInactive => false;
 
-        public float? TimeInState => null;
+        public float? TimeInState => _timeInState >= 0 ? Time.time - _timeInState : null;
 
         public async ValueTask Enter<TProgress>(
             IState previousState,
@@ -53,6 +54,7 @@ namespace WallstopStudios.DxState.State.Stack.States.Scenarios
         )
             where TProgress : IProgress<float>
         {
+            _timeInState = Time.time;
             UnityExtensions.ReportProgress(progress, 1f);
         }
 

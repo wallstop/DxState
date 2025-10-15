@@ -173,6 +173,12 @@ DxState is Wallstop Studios' state management package for Unity 2021.3, combinin
     - Subscribe to untargeted DxMessaging messages such as `StatePushedMessage`, `TransitionStartMessage`, or `TransitionProgressChangedMessage` to keep UI and analytics in sync.
     - Messages are declared under `Runtime/State/Stack/Messages` and decorated with `[DxUntargetedMessage]`, so any listener can register without specifying a receiver.
 
+## Choosing the Right Surface
+
+- **Scenario states & factories** (`Runtime/State/Stack/States/Scenarios`): Use the built-in states for cutscenes, dialogue, tutorials, networking, waiting, and scene orchestration when you need drop-in behaviour.
+- **`StateGraphBuilder` / `StateStackBuilder`** (`Runtime/State/Stack/Builder`): Compose stacks programmatically—`StateGraphBuilder` handles multi-stack graphs, while `StateStackBuilder` configures a single stack.
+- **Trigger/Component state machines** (`Runtime/State/Machine`): For localized logic, rely on `StateMachine<T>` or `TriggerStateMachine<TState, TTrigger>` and attach `StateMachineDiagnostics<T>` when you need transition history in tooling.
+
 ## Diagnostics
 
 - `StateStackManager.Diagnostics` exposes a rolling history of transitions and the latest progress values for each active state. Use it to surface history in custom tooling or logs.
