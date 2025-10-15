@@ -18,6 +18,11 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Machine
             StateMachine<TestState> machine = new StateMachine<TestState>(transitions, first);
             List<TransitionExecutionContext<TestState>> history = new List<TransitionExecutionContext<TestState>>();
             machine.TransitionExecuted += context => history.Add(context);
+            List<(TestState previous, TestState next, TransitionContext context)> deferred = new List<(TestState, TestState, TransitionContext)>();
+            machine.TransitionDeferred += (previous, next, transitionContext) =>
+            {
+                deferred.Add((previous, next, transitionContext));
+            };
 
             bool secondExited = false;
             second.OnExitAction = () => secondExited = true;
@@ -50,6 +55,11 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Machine
             Assert.AreEqual(TransitionFlags.ExternalRequest, history[0].Context.Flags);
             Assert.AreEqual(TransitionCause.Manual, history[1].Context.Cause);
             Assert.AreEqual(TransitionFlags.ExternalRequest, history[1].Context.Flags);
+            Assert.AreEqual(1, deferred.Count);
+            Assert.AreSame(second, deferred[0].previous);
+            Assert.AreSame(third, deferred[0].next);
+            Assert.AreEqual(TransitionCause.Manual, deferred[0].context.Cause);
+            Assert.AreEqual(TransitionFlags.ExternalRequest, deferred[0].context.Flags);
         }
 
         [Test]

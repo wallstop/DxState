@@ -14,6 +14,7 @@ namespace WallstopStudios.DxState.State.Machine
 
         private bool _hasTransitionContext;
         private bool _isProcessingTransitions;
+        private int _transitionDepth;
 
         private T _currentState;
 
@@ -70,6 +71,7 @@ namespace WallstopStudios.DxState.State.Machine
         public bool LogStateTransitions { get; set; }
 
         public event Action<TransitionExecutionContext<T>> TransitionExecuted;
+        public event Action<T, T, TransitionContext> TransitionDeferred;
 
         public void Update()
         {
@@ -115,16 +117,22 @@ namespace WallstopStudios.DxState.State.Machine
             TransitionContext? overrideContext = null
         )
         {
-            EnqueueTransition(newState, transition, overrideContext);
+            TransitionContext resolvedContext = ResolveTransitionContext(transition, overrideContext);
+            EnqueueTransition(newState, transition, resolvedContext);
         }
 
         private void EnqueueTransition(
             T newState,
             Transition<T> transition,
-            TransitionContext? overrideContext
+            TransitionContext context
         )
         {
-            PendingTransition pending = new PendingTransition(newState, transition, overrideContext);
+            if (_transitionDepth > 0)
+            {
+                TransitionDeferred?.Invoke(_currentState, newState, context);
+            }
+
+            PendingTransition pending = new PendingTransition(newState, transition, context);
             _pendingTransitions.Enqueue(pending);
             ProcessPendingTransitions();
         }
@@ -153,59 +161,64 @@ namespace WallstopStudios.DxState.State.Machine
 
         private void ExecutePendingTransition(PendingTransition pending)
         {
-            T previousState = _currentState;
-            T targetState = pending.NewState;
-            Transition<T> sourceTransition = pending.Transition;
-
-            if (!_states.ContainsKey(targetState))
+            _transitionDepth++;
+            try
             {
-                _states[targetState] = new List<Transition<T>>();
-            }
+                T previousState = _currentState;
+                T targetState = pending.NewState;
+                Transition<T> sourceTransition = pending.Transition;
 
-            TransitionContext contextToRecord = ResolveTransitionContext(
-                sourceTransition,
-                pending.OverrideContext
-            );
-
-            if (previousState is IStateContext<T> previousContext)
-            {
-                previousContext.Exit();
-            }
-
-            _currentState = targetState;
-
-            if (targetState is IStateContext<T> targetContext)
-            {
-                targetContext.StateMachine = this;
-            }
-
-            _latestTransitionContext = new TransitionExecutionContext<T>(
-                previousState,
-                targetState,
-                sourceTransition,
-                contextToRecord
-            );
-            _hasTransitionContext = true;
-
-            if (targetState is IStateContext<T> newContext)
-            {
-                if (LogStateTransitions)
+                if (!_states.ContainsKey(targetState))
                 {
-                    string previousName = previousState is object previousObject
-                        ? previousObject.GetType().Name
-                        : "<null>";
-                    string currentName = targetState is object currentObject
-                        ? currentObject.GetType().Name
-                        : "<null>";
-                    newContext.Log(
-                        $"Transitioning from {previousName} to {currentName} ({contextToRecord.Cause})."
-                    );
+                    _states[targetState] = new List<Transition<T>>();
                 }
 
-                newContext.Enter();
-            }
+                TransitionContext contextToRecord = pending.Context;
 
-            TransitionExecuted?.Invoke(_latestTransitionContext);
+                if (previousState is IStateContext<T> previousContext)
+                {
+                    previousContext.Exit();
+                }
+
+                _currentState = targetState;
+
+                if (targetState is IStateContext<T> targetContext)
+                {
+                    targetContext.StateMachine = this;
+                }
+
+                _latestTransitionContext = new TransitionExecutionContext<T>(
+                    previousState,
+                    targetState,
+                    sourceTransition,
+                    contextToRecord
+                );
+                _hasTransitionContext = true;
+
+                if (targetState is IStateContext<T> newContext)
+                {
+                    if (LogStateTransitions)
+                    {
+                        string previousName = previousState is object previousObject
+                            ? previousObject.GetType().Name
+                            : "<null>";
+                        string currentName = targetState is object currentObject
+                            ? currentObject.GetType().Name
+                            : "<null>";
+                        newContext.Log(
+                            $"Transitioning from {previousName} to {currentName} ({contextToRecord.Cause})."
+                        );
+                    }
+
+                    newContext.Enter();
+                }
+
+                TransitionExecuted?.Invoke(_latestTransitionContext);
+            }
+            finally
+            {
+                _transitionDepth--;
+            }
         }
 
         private static TransitionContext ResolveTransitionContext(
@@ -239,19 +252,19 @@ namespace WallstopStudios.DxState.State.Machine
             public PendingTransition(
                 T newState,
                 Transition<T> transition,
-                TransitionContext? overrideContext
+                TransitionContext context
             )
             {
                 NewState = newState;
                 Transition = transition;
-                OverrideContext = overrideContext;
+                Context = context;
             }
 
             public T NewState { get; }
 
             public Transition<T> Transition { get; }
 
-            public TransitionContext? OverrideContext { get; }
+            public TransitionContext Context { get; }
         }
     }
 }

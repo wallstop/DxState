@@ -1,18 +1,21 @@
 namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
 {
     using System;
+    using System.Collections;
     using System.Collections.Generic;
     using System.Threading.Tasks;
     using NUnit.Framework;
     using UnityEngine;
     using UnityEngine.SceneManagement;
+    using UnityEngine.TestTools;
     using WallstopStudios.DxState.State.Stack;
     using WallstopStudios.DxState.State.Stack.States;
+    using WallstopStudios.DxState.Tests.EditMode.TestSupport;
 
     public sealed class SceneStateTests
     {
-        [Test]
-        public void EnterQueuesSingleLoadOperationDuringReentry()
+        [UnityTest]
+        public IEnumerator EnterQueuesSingleLoadOperationDuringReentry()
         {
             TestSceneState state = new TestSceneState("TestScene", SceneTransitionMode.Addition);
             List<float> reported = new List<float>();
@@ -25,15 +28,15 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
             Assert.AreEqual(1, state.LoadCallCount);
 
             state.CompleteOperation();
-            firstEnter.AsTask().GetAwaiter().GetResult();
-            secondEnter.AsTask().GetAwaiter().GetResult();
+            yield return ValueTaskTestHelpers.WaitForValueTask(firstEnter);
+            yield return ValueTaskTestHelpers.WaitForValueTask(secondEnter);
 
             Assert.IsTrue(state.SceneLoaded);
             Assert.IsNotEmpty(reported);
         }
 
-        [Test]
-        public void EnterSkipsLoadWhenSceneAlreadyLoaded()
+        [UnityTest]
+        public IEnumerator EnterSkipsLoadWhenSceneAlreadyLoaded()
         {
             TestSceneState state = new TestSceneState("TestScene", SceneTransitionMode.Addition)
             {
@@ -41,13 +44,13 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
             };
 
             ValueTask enter = state.Enter(null, new Progress<float>(_ => { }), StateDirection.Forward);
-            enter.AsTask().GetAwaiter().GetResult();
+            yield return ValueTaskTestHelpers.WaitForValueTask(enter);
 
             Assert.AreEqual(0, state.LoadCallCount);
         }
 
-        [Test]
-        public void RevertTriggersUnloadWhenAdditionAndConfigured()
+        [UnityTest]
+        public IEnumerator RevertTriggersUnloadWhenAdditionAndConfigured()
         {
             TestSceneState state = new TestSceneState("TestScene", SceneTransitionMode.Addition)
             {
@@ -64,13 +67,13 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
             Assert.AreEqual(1, state.UnloadCallCount);
 
             state.CompleteOperation();
-            remove.AsTask().GetAwaiter().GetResult();
+            yield return ValueTaskTestHelpers.WaitForValueTask(remove);
 
             Assert.IsFalse(state.SceneLoaded);
         }
 
-        [Test]
-        public void EnterThrowsWhenOperationFactoryReturnsNull()
+        [UnityTest]
+        public IEnumerator EnterThrowsWhenOperationFactoryReturnsNull()
         {
             TestSceneState state = new TestSceneState("TestScene", SceneTransitionMode.Addition)
             {
@@ -78,11 +81,14 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
                 ReturnNullOperation = true,
             };
 
-            Assert.Throws<InvalidOperationException>(() =>
-                state.Enter(null, new Progress<float>(_ => { }), StateDirection.Forward)
-                    .AsTask()
-                    .GetAwaiter()
-                    .GetResult()
+            ValueTask enter = state.Enter(
+                null,
+                new Progress<float>(_ => { }),
+                StateDirection.Forward
+            );
+            yield return ValueTaskTestHelpers.ExpectFaulted(
+                enter,
+                exception => Assert.IsInstanceOf<InvalidOperationException>(exception)
             );
         }
 

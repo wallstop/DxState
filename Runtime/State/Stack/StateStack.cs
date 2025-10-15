@@ -536,13 +536,10 @@ namespace WallstopStudios.DxState.State.Stack
                 return ExecuteTransition();
             }
 
-            TaskCompletionSource<bool> completionSource = new TaskCompletionSource<bool>(
-                TaskCreationOptions.RunContinuationsAsynchronously
-            );
-
+            TransitionCompletionSource completionSource = TransitionCompletionSource.Rent();
             _transitionQueue.Enqueue(new QueuedTransition(ExecuteTransition, completionSource));
             TryProcessNextQueuedTransition();
-            return new ValueTask(completionSource.Task);
+            return completionSource.AsValueTask();
         }
 
         private async ValueTask ExecuteTransitionInternal<TContext>(
@@ -613,17 +610,22 @@ namespace WallstopStudios.DxState.State.Stack
             try
             {
                 await queuedTransition.Execute().ConfigureAwait(false);
-                queuedTransition.CompletionSource?.TrySetResult(true);
+                TransitionCompletionSource completionSource = queuedTransition.CompletionSource;
+                completionSource?.SetResult();
             }
             catch (Exception exception)
             {
-                queuedTransition.CompletionSource?.TrySetException(exception);
+                TransitionCompletionSource completionSource = queuedTransition.CompletionSource;
+                completionSource?.SetException(exception);
             }
         }
 
         private readonly struct QueuedTransition
         {
-            public QueuedTransition(Func<ValueTask> execute, TaskCompletionSource<bool> completionSource)
+            public QueuedTransition(
+                Func<ValueTask> execute,
+                TransitionCompletionSource completionSource
+            )
             {
                 Execute = execute;
                 CompletionSource = completionSource;
@@ -631,7 +633,7 @@ namespace WallstopStudios.DxState.State.Stack
 
             public Func<ValueTask> Execute { get; }
 
-            public TaskCompletionSource<bool> CompletionSource { get; }
+            public TransitionCompletionSource CompletionSource { get; }
         }
     }
 }
