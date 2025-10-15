@@ -4,8 +4,8 @@
   "displayName": "DxState",
   "description": "Simple State Management for Unity",
   "dependencies": {
-    "com.wallstop-studios.unity-helpers": "2.0.0-rc78.9",
-    "com.wallstop-studios.dxmessaging": "2.0.0-rc26.6"
+    "com.wallstop-studios.unity-helpers": "2.0.0",
+    "com.wallstop-studios.dxmessaging": "2.0.0"
   },
   "unity": "2021.3",
   "keywords": [
@@ -27,11 +27,15 @@
   "main": "README.md",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
-  }
+  },
+  "samples": [
+    {
+      "displayName": "State Stack Bootstrap",
+      "description": "Prefab and helper scripts for wiring a StateStackManager with messaging integration.",
+      "path": "Samples~/Bootstrap"
+    }
+  ]
 }
-
-
-
 
 
 

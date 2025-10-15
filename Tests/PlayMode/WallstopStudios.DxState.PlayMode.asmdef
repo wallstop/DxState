@@ -1,0 +1,37 @@
+{
+    "name": "WallstopStudios.DxState.Tests.Runtime",
+    "rootNamespace": "WallstopStudios.DxState.Tests.Runtime",
+    "references": [
+        "WallstopStudios.DxState",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner",
+        "WallstopStudios.DxMessaging"
+    ],
+    "includePlatforms": [
+        "Android",
+        "Editor",
+        "iOS",
+        "LinuxStandalone64",
+        "macOSStandalone",
+        "PS4",
+        "PS5",
+        "Stadia",
+        "Switch",
+        "tvOS",
+        "WebGL",
+        "WindowsStandalone64",
+        "XboxOne"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

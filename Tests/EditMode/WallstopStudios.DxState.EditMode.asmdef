@@ -1,0 +1,26 @@
+{
+    "name": "WallstopStudios.DxState.Tests.Editor",
+    "rootNamespace": "WallstopStudios.DxState.Tests.Editor",
+    "references": [
+        "WallstopStudios.DxState",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner",
+        "WallstopStudios.DxMessaging",
+        "WallstopStudios.UnityHelpers"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

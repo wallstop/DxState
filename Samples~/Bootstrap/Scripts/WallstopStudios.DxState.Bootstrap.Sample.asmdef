@@ -1,0 +1,16 @@
+{
+    "name": "WallstopStudios.DxState.Bootstrap.Sample",
+    "rootNamespace": "WallstopStudios.DxState.Samples.Bootstrap",
+    "references": [
+        "WallstopStudios.DxState"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

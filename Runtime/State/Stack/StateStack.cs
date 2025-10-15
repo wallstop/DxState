@@ -32,6 +32,7 @@ namespace WallstopStudios.DxState.State.Stack
         private readonly IProgress<float> _masterProgress;
         private readonly Progress<float> _noOpProgress;
         private TaskCompletionSource<bool> _transitionWaiter;
+        private readonly Queue<QueuedTransition> _transitionQueue = new();
 
         private readonly Func<IState, IProgress<float>, ValueTask> _push;
         private readonly Func<IState, IProgress<float>, ValueTask> _pop;
@@ -77,13 +78,16 @@ namespace WallstopStudios.DxState.State.Stack
 
         public ValueTask WaitForTransitionCompletionAsync()
         {
-            if (!_isTransitioning)
+            if (!_isTransitioning && _transitionQueue.Count == 0)
             {
                 return new ValueTask();
             }
-            _transitionWaiter ??= new TaskCompletionSource<bool>(
-                TaskCreationOptions.RunContinuationsAsynchronously
-            );
+            if (_transitionWaiter == null || _transitionWaiter.Task.IsCompleted)
+            {
+                _transitionWaiter = new TaskCompletionSource<bool>(
+                    TaskCreationOptions.RunContinuationsAsynchronously
+                );
+            }
             return new ValueTask(_transitionWaiter.Task);
         }
 
@@ -437,23 +441,88 @@ namespace WallstopStudios.DxState.State.Stack
                 return;
             }
 
-            IState current = CurrentState;
-            if (current == null)
+            if (tickMode == TickMode.None)
             {
                 return;
             }
-            if (!current.TickMode.HasFlagNoAlloc(tickMode))
+
+            float delta = ResolveDeltaForTick(tickMode);
+
+            int stackCount = _stack.Count;
+            if (stackCount == 0)
             {
                 return;
             }
-            current.Tick(tickMode, Time.fixedDeltaTime);
+
+            IState current = _stack[stackCount - 1];
+            if (current != null && current.TickMode.HasFlagNoAlloc(tickMode))
+            {
+                current.Tick(tickMode, delta);
+            }
+
+            if (stackCount <= 1)
+            {
+                return;
+            }
+
+            for (int i = 0; i < stackCount - 1; ++i)
+            {
+                IState inactiveState = _stack[i];
+                if (!inactiveState.TickWhenInactive)
+                {
+                    continue;
+                }
+
+                if (!inactiveState.TickMode.HasFlagNoAlloc(tickMode))
+                {
+                    continue;
+                }
+
+                inactiveState.Tick(tickMode, delta);
+            }
         }
 
-        private async ValueTask PerformTransition<TContext>(
+        private static float ResolveDeltaForTick(TickMode tickMode)
+        {
+            if ((tickMode & TickMode.FixedUpdate) == TickMode.FixedUpdate)
+            {
+                return Time.fixedDeltaTime;
+            }
+
+            return Time.deltaTime;
+        }
+
+        private ValueTask PerformTransition<TContext>(
             Func<TContext, IProgress<float>, ValueTask> transition,
             IState targetState,
             TContext context = default,
             bool shouldInvokeTransition = true
+        )
+        {
+            ValueTask ExecuteTransition()
+            {
+                return ExecuteTransitionInternal(transition, targetState, context, shouldInvokeTransition);
+            }
+
+            if (!_isTransitioning && _transitionQueue.Count == 0)
+            {
+                return ExecuteTransition();
+            }
+
+            TaskCompletionSource<bool> completionSource = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously
+            );
+
+            _transitionQueue.Enqueue(new QueuedTransition(ExecuteTransition, completionSource));
+            TryProcessNextQueuedTransition();
+            return new ValueTask(completionSource.Task);
+        }
+
+        private async ValueTask ExecuteTransitionInternal<TContext>(
+            Func<TContext, IProgress<float>, ValueTask> transition,
+            IState targetState,
+            TContext context,
+            bool shouldInvokeTransition
         )
         {
             if (_isTransitioning)
@@ -482,9 +551,52 @@ namespace WallstopStudios.DxState.State.Stack
             finally
             {
                 _isTransitioning = false;
+                TryProcessNextQueuedTransition();
+            }
+        }
+
+        private void TryProcessNextQueuedTransition()
+        {
+            if (_isTransitioning)
+            {
+                return;
+            }
+
+            if (_transitionQueue.Count == 0)
+            {
                 _transitionWaiter?.TrySetResult(true);
                 _transitionWaiter = null;
+                return;
             }
+
+            QueuedTransition queuedTransition = _transitionQueue.Dequeue();
+            _ = RunQueuedTransitionAsync(queuedTransition);
+        }
+
+        private async Task RunQueuedTransitionAsync(QueuedTransition queuedTransition)
+        {
+            try
+            {
+                await queuedTransition.Execute().ConfigureAwait(false);
+                queuedTransition.CompletionSource?.TrySetResult(true);
+            }
+            catch (Exception exception)
+            {
+                queuedTransition.CompletionSource?.TrySetException(exception);
+            }
+        }
+
+        private readonly struct QueuedTransition
+        {
+            public QueuedTransition(Func<ValueTask> execute, TaskCompletionSource<bool> completionSource)
+            {
+                Execute = execute;
+                CompletionSource = completionSource;
+            }
+
+            public Func<ValueTask> Execute { get; }
+
+            public TaskCompletionSource<bool> CompletionSource { get; }
         }
     }
 }

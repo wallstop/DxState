@@ -7,8 +7,14 @@ namespace WallstopStudios.DxState.State.Machine.Component
         public ComponentStateTransition(
             StateComponent from,
             StateComponent to,
-            Func<bool> rule = null
+            Func<bool> rule = null,
+            TransitionContext context = default
         )
-            : base(from, to, rule != null ? () => rule() && to.ShouldEnter() : to.ShouldEnter) { }
+            : base(
+                from,
+                to,
+                rule != null ? () => rule() && to.ShouldEnter() : to.ShouldEnter,
+                context
+            ) { }
     }
 }
