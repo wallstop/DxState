@@ -38,12 +38,12 @@
 - [x] Replace `TaskCompletionSource`-backed queues with pooled value-task sources
   - `Runtime/State/Stack/Internal/TransitionCompletionSource.cs` now provides a custom pooled awaitable with no dependency on `ManualResetValueTaskSourceCore<T>` collisions.
   - `StateStack` transition queuing updated to consume the pooled source (`Runtime/State/Stack/StateStack.cs`).
-- [ ] Optimise `StateGroup` parallel execution path
-  - Swap `Task.WhenAll` for custom `ValueTask` combinators that run child states without allocating intermediate `Task` objects.
-  - Reuse `List<Task>`/`ParallelProgressAggregator` buffers via `ArrayPool` or persistent fields sized to child count.
-- [ ] Reduce delegate and LINQ overhead in hot paths
-  - Replace LINQ (`ToArray`, `Contains`) in `StateStackBootstrapper` and `StateGroup` initialisation with manual loops or span helpers to avoid per-frame GC.
-  - Introduce struct-based transition predicates (`ITransitionRule` implementors) so common rules can avoid closure allocation.
+- [x] Optimise `StateGroup` parallel execution path
+  - Removed `Task.WhenAll` and per-transition task allocations in favour of pooled `ValueTask` coordination (`Runtime/State/Stack/States/StateGroup.cs`).
+  - `ParallelProgressAggregator` still drives shared progress while `ArrayPool<ValueTask>` backs the temporary buffers.
+- [~] Reduce delegate and LINQ overhead in hot paths
+  - [x] Eliminated `Contains`/`ToArray` usage in bootstrapper and state-group construction in favour of explicit loops and pooled buffers (`Runtime/State/Stack/Components/StateStackBootstrapper.cs`, `Runtime/State/Stack/States/StateGroup.cs`).
+  - [x] Introduced `ITransitionRule` with struct-based evaluation to bypass delegate allocations, plus coverage in `StateMachineTests` (`Runtime/State/Machine/Component/Transition.cs`, `Tests/EditMode/State/Machine/StateMachineTests.cs`).
 - [ ] Profile and expose metrics
   - Add optional sampling hooks (counts of transitions, average progress duration) to feed diagnostics and verify optimisation impact.
 

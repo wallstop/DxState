@@ -87,6 +87,31 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Machine
             Assert.IsTrue(second.IsActive);
         }
 
+        [Test]
+        public void StructBasedRuleExecutesTransition()
+        {
+            ToggleRule rule = new ToggleRule(true);
+            TestState first = new TestState("First");
+            TestState second = new TestState("Second");
+            Transition<TestState> toSecond = new Transition<TestState>(
+                first,
+                second,
+                rule,
+                new TransitionContext(TransitionCause.RuleSatisfied)
+            );
+
+            StateMachine<TestState> machine = new StateMachine<TestState>(
+                new[] { toSecond },
+                first
+            );
+
+            machine.Update();
+
+            Assert.AreSame(second, machine.CurrentState);
+            Assert.IsFalse(first.IsActive);
+            Assert.IsTrue(second.IsActive);
+        }
+
         private sealed class TestState : IStateContext<TestState>
         {
             private readonly string _name;
@@ -138,6 +163,21 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Machine
 
             public void Log(FormattableString message)
             {
+            }
+        }
+
+        private readonly struct ToggleRule : ITransitionRule
+        {
+            private readonly bool _shouldTransition;
+
+            public ToggleRule(bool shouldTransition)
+            {
+                _shouldTransition = shouldTransition;
+            }
+
+            public bool Evaluate()
+            {
+                return _shouldTransition;
             }
         }
     }

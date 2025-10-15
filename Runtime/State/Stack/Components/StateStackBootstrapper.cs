@@ -90,22 +90,27 @@ namespace WallstopStudios.DxState.State.Stack.Components
         private void RegisterConfiguredStates()
         {
             List<GameState> statesToRegister = new List<GameState>();
+            HashSet<GameState> uniqueStates = new HashSet<GameState>();
+
+            void TryAddState(GameState candidate)
+            {
+                if (candidate == null)
+                {
+                    return;
+                }
+
+                if (uniqueStates.Add(candidate))
+                {
+                    statesToRegister.Add(candidate);
+                }
+            }
 
             if (_registerChildGameStates)
             {
                 GameState[] discoveredStates = GetComponentsInChildren<GameState>(true);
                 for (int i = 0; i < discoveredStates.Length; i++)
                 {
-                    GameState discovered = discoveredStates[i];
-                    if (discovered == null)
-                    {
-                        continue;
-                    }
-
-                    if (!statesToRegister.Contains(discovered))
-                    {
-                        statesToRegister.Add(discovered);
-                    }
+                    TryAddState(discoveredStates[i]);
                 }
             }
 
@@ -113,16 +118,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
             {
                 for (int i = 0; i < _additionalStates.Length; i++)
                 {
-                    GameState additionalState = _additionalStates[i];
-                    if (additionalState == null)
-                    {
-                        continue;
-                    }
-
-                    if (!statesToRegister.Contains(additionalState))
-                    {
-                        statesToRegister.Add(additionalState);
-                    }
+                    TryAddState(_additionalStates[i]);
                 }
             }
 

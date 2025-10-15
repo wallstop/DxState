@@ -83,16 +83,13 @@ namespace WallstopStudios.DxState.State.Machine
             for (int i = 0; i < transitionsForCurrent.Count; i++)
             {
                 Transition<T> transition = transitionsForCurrent[i];
-                if (transition.rule == null)
+                if (!transition.Evaluate())
                 {
                     continue;
                 }
 
-                if (transition.rule.Invoke())
-                {
-                    TransitionToState(transition.to, transition);
-                    return;
-                }
+                TransitionToState(transition.to, transition);
+                return;
             }
         }
 

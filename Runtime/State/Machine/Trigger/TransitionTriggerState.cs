@@ -47,12 +47,14 @@ namespace WallstopStudios.DxState.State.Machine.Trigger
             for (int i = 0; i < _transitions.Count; i++)
             {
                 Transition<TState> transition = _transitions[i];
-                if (transition.rule != null && transition.rule.Invoke())
+                if (!transition.Evaluate())
                 {
-                    trigger = transition.to;
-                    context = transition.Context;
-                    return true;
+                    continue;
                 }
+
+                trigger = transition.to;
+                context = transition.Context;
+                return true;
             }
 
             trigger = default;

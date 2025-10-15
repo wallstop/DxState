@@ -4,7 +4,6 @@ namespace WallstopStudios.DxState.State.Stack.States
     using System.Buffers;
     using System.Collections.Generic;
     using System.ComponentModel;
-    using System.Linq;
     using System.Threading.Tasks;
     using UnityEngine;
 
@@ -34,7 +33,6 @@ namespace WallstopStudios.DxState.State.Stack.States
             string,
             Func<IState, StateDirection, ValueTask>
         > _onChildExitFinishedCallbacks;
-        private readonly List<Task> _parallelTasks;
         private readonly object _parallelProgressGate;
 
         private float _groupEnterTime = -1;
@@ -57,7 +55,7 @@ namespace WallstopStudios.DxState.State.Stack.States
         )
         {
             Name = name ?? throw new ArgumentNullException(nameof(name));
-            _childStates = childStates?.ToArray() ?? Array.Empty<IState>();
+            _childStates = CopyChildStates(childStates);
             _mode = mode;
             TickMode = groupTickMode;
             TickWhenInactive = groupTickWhenInactive;
@@ -85,8 +83,42 @@ namespace WallstopStudios.DxState.State.Stack.States
             _onChildExitFinishedCallbacks =
                 onChildExitFinishedCallbacks
                 ?? new Dictionary<string, Func<IState, StateDirection, ValueTask>>();
-            _parallelTasks = new List<Task>(_childStates.Length);
             _parallelProgressGate = new object();
+        }
+
+        private static IState[] CopyChildStates(IEnumerable<IState> source)
+        {
+            if (source == null)
+            {
+                return Array.Empty<IState>();
+            }
+
+            if (source is ICollection<IState> collection)
+            {
+                if (collection.Count == 0)
+                {
+                    return Array.Empty<IState>();
+                }
+
+                IState[] destination = new IState[collection.Count];
+                collection.CopyTo(destination, 0);
+                return destination;
+            }
+
+            List<IState> buffer = new List<IState>();
+            foreach (IState child in source)
+            {
+                buffer.Add(child);
+            }
+
+            if (buffer.Count == 0)
+            {
+                return Array.Empty<IState>();
+            }
+
+            IState[] result = new IState[buffer.Count];
+            buffer.CopyTo(result, 0);
+            return result;
         }
 
         public async ValueTask Enter<TProgress>(
@@ -138,7 +170,6 @@ namespace WallstopStudios.DxState.State.Stack.States
                 }
                 case StateGroupMode.Parallel:
                 {
-                    _parallelTasks.Clear();
                     using (
                         ParallelProgressAggregator aggregator = new ParallelProgressAggregator(
                             _childStates.Length,
@@ -147,19 +178,20 @@ namespace WallstopStudios.DxState.State.Stack.States
                         )
                     )
                     {
+                        ValueTask[] operations = ArrayPool<ValueTask>.Shared.Rent(_childStates.Length);
+                        int scheduledCount = 0;
                         for (int i = 0; i < _childStates.Length; ++i)
                         {
                             IState child = _childStates[i];
                             ParallelProgressAggregator.ProgressReporter reporter =
                                 aggregator.CreateReporter(i);
 
-                            _parallelTasks.Add(ExecuteAndCallback(child, reporter).AsTask());
+                            operations[scheduledCount++] = ExecuteAndCallback(child, reporter);
                         }
 
-                        await Task.WhenAll(_parallelTasks);
+                        await AwaitAll(operations, scheduledCount);
+                        ArrayPool<ValueTask>.Shared.Return(operations, clearArray: true);
                     }
-
-                    _parallelTasks.Clear();
 
                     async ValueTask ExecuteAndCallback(
                         IState child,
@@ -247,7 +279,6 @@ namespace WallstopStudios.DxState.State.Stack.States
                 }
                 case StateGroupMode.Parallel:
                 {
-                    _parallelTasks.Clear();
                     using (
                         ParallelProgressAggregator aggregator = new ParallelProgressAggregator(
                             _childStates.Length,
@@ -256,19 +287,21 @@ namespace WallstopStudios.DxState.State.Stack.States
                         )
                     )
                     {
+                        ValueTask[] operations = ArrayPool<ValueTask>.Shared.Rent(_childStates.Length);
+                        int scheduledCount = 0;
                         for (int i = 0; i < _childStates.Length; ++i)
                         {
                             IState child = _childStates[i];
                             ParallelProgressAggregator.ProgressReporter reporter =
                                 aggregator.CreateReporter(i);
 
-                            _parallelTasks.Add(ExecuteAndCallback(child, reporter).AsTask());
+                            operations[scheduledCount++] = ExecuteAndCallback(child, reporter);
                         }
 
-                        await Task.WhenAll(_parallelTasks);
+                        await AwaitAll(operations, scheduledCount);
+                        ArrayPool<ValueTask>.Shared.Return(operations, clearArray: true);
                     }
 
-                    _parallelTasks.Clear();
                     async ValueTask ExecuteAndCallback(
                         IState child,
                         ParallelProgressAggregator.ProgressReporter reporter
@@ -387,11 +420,7 @@ namespace WallstopStudios.DxState.State.Stack.States
                             1f / _childStates.Length
                         );
 
-                        await child.Remove(
-                            previousStatesInStack,
-                            nextStatesInStack,
-                            childProgress
-                        );
+                        await child.Remove(previousStatesInStack, nextStatesInStack, childProgress);
                     }
 
                     progress.Report(1f);
@@ -400,7 +429,6 @@ namespace WallstopStudios.DxState.State.Stack.States
                 }
                 case StateGroupMode.Parallel:
                 {
-                    _parallelTasks.Clear();
                     using (
                         ParallelProgressAggregator aggregator = new ParallelProgressAggregator(
                             _childStates.Length,
@@ -409,21 +437,22 @@ namespace WallstopStudios.DxState.State.Stack.States
                         )
                     )
                     {
+                        ValueTask[] operations = ArrayPool<ValueTask>.Shared.Rent(_childStates.Length);
+                        int scheduledCount = 0;
                         for (int i = 0; i < _childStates.Length; ++i)
                         {
                             IState child = _childStates[i];
                             ParallelProgressAggregator.ProgressReporter reporter =
                                 aggregator.CreateReporter(i);
 
-                            _parallelTasks.Add(
-                                child.Remove(previousStatesInStack, nextStatesInStack, reporter).AsTask()
-                            );
+                            operations[scheduledCount++] =
+                                child.Remove(previousStatesInStack, nextStatesInStack, reporter);
                         }
 
-                        await Task.WhenAll(_parallelTasks);
+                        await AwaitAll(operations, scheduledCount);
+                        ArrayPool<ValueTask>.Shared.Return(operations, clearArray: true);
                     }
 
-                    _parallelTasks.Clear();
                     progress.Report(1f);
                     _currentSequentialChildIndex = -1;
                     break;
@@ -436,6 +465,14 @@ namespace WallstopStudios.DxState.State.Stack.States
                         typeof(StateGroupMode)
                     );
                 }
+            }
+        }
+
+        private static async ValueTask AwaitAll(ValueTask[] operations, int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                await operations[i];
             }
         }
 
