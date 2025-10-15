@@ -2,9 +2,13 @@ namespace WallstopStudios.DxState.Extensions
 {
     using System;
     using System.Collections.Generic;
+    using System.Reflection;
     using System.Threading;
     using System.Threading.Tasks;
     using UnityEngine;
+#if UNITY_EDITOR
+    using UnityEditor;
+#endif
 
     public static class UnityExtensions
     {
@@ -18,7 +22,7 @@ namespace WallstopStudios.DxState.Extensions
         {
             if (operation == null)
             {
-                progressReporter?.Report(1f);
+                ReportProgress(progressReporter, 1f);
                 return default;
             }
 
@@ -29,7 +33,7 @@ namespace WallstopStudios.DxState.Extensions
 
             if (operation.isDone)
             {
-                progressReporter?.Report(operation.progress / total);
+                ReportProgress(progressReporter, ResolveNormalizedProgress(operation.progress, total));
                 return default;
             }
 
@@ -40,6 +44,32 @@ namespace WallstopStudios.DxState.Extensions
                 cancellationToken
             );
             return awaiter.AwaitAsync();
+        }
+
+        internal static void ReportProgress(IProgress<float> reporter, float value)
+        {
+            if (reporter == null)
+            {
+                return;
+            }
+
+#if UNITY_EDITOR
+            if (!Application.isPlaying && reporter is Progress<float> progress)
+            {
+                if (ProgressInvoker.TryInvokeInline(progress, value))
+                {
+                    return;
+                }
+            }
+#endif
+
+            reporter.Report(value);
+        }
+
+        private static float ResolveNormalizedProgress(float progress, float total)
+        {
+            float safeTotal = Mathf.Approximately(total, 0f) ? 1f : total;
+            return Mathf.Clamp01(progress / safeTotal);
         }
 
         private sealed class AsyncOperationAwaiter : IDisposable
@@ -127,7 +157,8 @@ namespace WallstopStudios.DxState.Extensions
 
             private void ReportProgress()
             {
-                _progressReporter?.Report(_operation.progress / _total);
+                float normalized = ResolveNormalizedProgress(_operation.progress, _total);
+                UnityExtensions.ReportProgress(_progressReporter, normalized);
             }
 
             public void Dispose()
@@ -135,6 +166,33 @@ namespace WallstopStudios.DxState.Extensions
                 Cleanup();
             }
         }
+
+#if UNITY_EDITOR
+        private static class ProgressInvoker
+        {
+            private static readonly FieldInfo HandlerField =
+                typeof(Progress<float>).GetField(
+                    "_handler",
+                    BindingFlags.Instance | BindingFlags.NonPublic
+                );
+
+            public static bool TryInvokeInline(Progress<float> progress, float value)
+            {
+                if (HandlerField == null)
+                {
+                    return false;
+                }
+
+                if (HandlerField.GetValue(progress) is Action<float> handler)
+                {
+                    handler.Invoke(value);
+                    return true;
+                }
+
+                return false;
+            }
+        }
+#endif
 
         private sealed class AsyncOperationProgressDriver : MonoBehaviour
         {
@@ -161,8 +219,17 @@ namespace WallstopStudios.DxState.Extensions
                 {
                     hideFlags = HideFlags.HideAndDontSave,
                 };
-                DontDestroyOnLoad(host);
+                if (Application.isPlaying)
+                {
+                    DontDestroyOnLoad(host);
+                }
                 _instance = host.AddComponent<AsyncOperationProgressDriver>();
+#if UNITY_EDITOR
+                if (!Application.isPlaying)
+                {
+                    EditorApplication.update += _instance.EditorUpdate;
+                }
+#endif
             }
 
             public void Register(AsyncOperationAwaiter awaiter)
@@ -180,6 +247,29 @@ namespace WallstopStudios.DxState.Extensions
 
             private void Update()
             {
+                TickWatchers();
+            }
+
+#if UNITY_EDITOR
+            private void EditorUpdate()
+            {
+                if (_instance == null)
+                {
+                    EditorApplication.update -= EditorUpdate;
+                    return;
+                }
+
+                TickWatchers();
+
+                if (Application.isPlaying)
+                {
+                    EditorApplication.update -= EditorUpdate;
+                }
+            }
+#endif
+
+            private void TickWatchers()
+            {
                 for (int i = 0; i < _watchers.Count; i++)
                 {
                     _watchers[i].Update();
@@ -188,6 +278,9 @@ namespace WallstopStudios.DxState.Extensions
 
             private void OnDestroy()
             {
+#if UNITY_EDITOR
+                EditorApplication.update -= EditorUpdate;
+#endif
                 _watchers.Clear();
             }
         }

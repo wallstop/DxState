@@ -5,7 +5,8 @@
         "WallstopStudios.DxState",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
-        "WallstopStudios.DxMessaging"
+        "WallstopStudios.DxMessaging",
+        "WallstopStudios.UnityHelpers"
     ],
     "includePlatforms": [
         "Android",

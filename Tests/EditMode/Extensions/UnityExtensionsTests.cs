@@ -57,6 +57,9 @@ namespace WallstopStudios.DxState.Tests.EditMode.Extensions
                 yield return null;
             }
 
+            // Allow posted progress callbacks to flush onto the main thread.
+            yield return null;
+
             if (awaitedTask.IsFaulted)
             {
                 Exception exception = awaitedTask.Exception;
@@ -77,6 +80,8 @@ namespace WallstopStudios.DxState.Tests.EditMode.Extensions
             {
                 yield return null;
             }
+
+            yield return null;
 
             Assert.IsTrue(awaitedTask.IsCanceled);
         }

@@ -4,9 +4,9 @@ namespace WallstopStudios.DxState.State.Stack.States
     using System.Collections.Generic;
     using System.ComponentModel;
     using System.Threading.Tasks;
-    using Extensions;
     using UnityEngine;
     using UnityEngine.SceneManagement;
+    using WallstopStudios.DxState.Extensions;
     using AsyncOperation = UnityEngine.AsyncOperation;
 
     [Serializable]
@@ -315,7 +315,7 @@ namespace WallstopStudios.DxState.State.Stack.States
             IProgress<float> reporter = progress;
             if (reporter != null)
             {
-                reporter.Report(1f);
+                UnityExtensions.ReportProgress(reporter, 1f);
             }
         }
     }

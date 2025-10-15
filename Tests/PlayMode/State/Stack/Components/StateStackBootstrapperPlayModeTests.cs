@@ -1,4 +1,4 @@
-namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Components
+namespace WallstopStudios.DxState.Tests.PlayMode.State.Stack.Components
 {
     using System.Collections;
     using NUnit.Framework;
@@ -7,14 +7,14 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Components
     using WallstopStudios.DxState.State.Stack;
     using WallstopStudios.DxState.State.Stack.Components;
 
-    public sealed class StateStackBootstrapperTests
+    public sealed class StateStackBootstrapperPlayModeTests
     {
         [UnityTest]
         public IEnumerator BootstrapperRegistersAndPushesInitialState()
         {
             GameObject stackObject = new GameObject("StateStack_Bootstrap_Test");
-            StateStackManager manager = (StateStackManager)
-                stackObject.AddComponent(typeof(StateStackManager));
+            StateStackManager manager =
+                (StateStackManager)stackObject.AddComponent(typeof(StateStackManager));
             TestGameState testState = stackObject.AddComponent<TestGameState>();
             stackObject.AddComponent<StateStackBootstrapper>();
 
@@ -32,7 +32,7 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Components
             Assert.IsNotNull(manager.Diagnostics);
             Assert.Greater(manager.Diagnostics.Events.Count, 0);
 
-            Object.DestroyImmediate(stackObject);
+            Object.Destroy(stackObject);
         }
 
         private static IEnumerator WaitForCurrentState(StateStackManager manager, IState targetState)
