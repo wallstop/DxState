@@ -129,11 +129,14 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Diagnostics
 
         private static IEnumerator WaitUntilProgressRecorded(
             StateStackDiagnostics diagnostics,
-            string stateName
+            string stateName,
+            int maxFrames = 120
         )
         {
-            while (!diagnostics.LatestProgress.ContainsKey(stateName))
+            int framesWaited = 0;
+            while (!diagnostics.LatestProgress.ContainsKey(stateName) && framesWaited < maxFrames)
             {
+                framesWaited++;
                 yield return null;
             }
         }
