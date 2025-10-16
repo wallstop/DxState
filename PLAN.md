@@ -11,13 +11,13 @@
    - Provide inline metrics overlays (transition count, average duration, last triggered timestamp) by streaming data from `StateStackDiagnostics`; visually animate active edges. (Completed – GraphView nodes now surface diagnostics and active transitions pulse along highlighted edges.)
    - Implement state/node inspector syncing: selecting a node opens its serialized state (MonoBehaviour or ScriptableObject) in an embedded inspector panel for quick edits. (Completed – GraphView window now hosts a docked inspector that tracks the active node.)
    - Enable drag-and-drop authoring from Project view into GraphView to create new state references and auto-wire initial transitions. (Completed – GraphView now accepts dragged state assets and appends them with undo support.)
-   - Record undoable operations for node reordering, edge edits, and state insertion/removal to ensure editor workflows stay safe.
+   - Record undoable operations for node reordering, edge edits, and state insertion/removal to ensure editor workflows stay safe. (Completed – GraphView operations now wrap metadata changes and edge/node edits with Undo support.)
 
 2. [ ] Deepen diagnostics overlay UX for live debugging.
-   - Offer preset layouts (corner, docked strip, compact HUD) and a lock toggle to prevent accidental repositioning.
+   - Offer preset layouts (corner, docked strip, compact HUD) and a lock toggle to prevent accidental repositioning. (Completed – diagnostics overlay now supports layout cycling and position locking.)
    - Expose filters (e.g. only failures/manual transitions) and severity color-coding to focus on actionable events during play mode.
    - Add pause/step controls to temporarily halt automatic updates, step through queued transitions, or examine snapshots without losing context.
-   - Provide timeline visualization (small sparkline/timeline) of the past N transitions with durations and causes; allow bookmarking/pinning a state for closer inspection.
+   - Provide timeline visualization (small sparkline/timeline) of the past N transitions with durations and causes; allow bookmarking/pinning a state for closer inspection. (In Progress)
    - Support theming (color/font scale) for readability on various backgrounds and accessibility needs.
 
 3. [ ] Improve authoring data surfaces (serialization & ScriptableObjects).

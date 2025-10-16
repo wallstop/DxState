@@ -1,5 +1,6 @@
 namespace WallstopStudios.DxState.State.Stack.Components
 {
+    using System;
     using System.Collections.Generic;
     using System.Text;
     using UnityEngine;
@@ -18,12 +19,19 @@ namespace WallstopStudios.DxState.State.Stack.Components
         [Min(1)]
         private int _eventsToDisplay = 8;
 
+        [SerializeField]
+        private OverlayLayout _layoutMode = OverlayLayout.Floating;
+
+        [SerializeField]
+        private bool _lockWindow;
+
         private enum OverlayTab
         {
             Stack = 0,
             Events = 1,
             Progress = 2,
             Metrics = 3,
+            Timeline = 4,
         }
 
         private StateStackManager _stateStackManager;
@@ -31,6 +39,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
         private Rect _windowRect = new Rect(16f, 16f, 360f, 260f);
         private OverlayTab _selectedTab;
         private Vector2 _scrollPosition;
+        private OverlayLayout _appliedLayout;
 
         public void Configure(KeyCode toggleKey, bool startVisible, int eventsToDisplay)
         {
@@ -44,6 +53,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
         {
             _stateStackManager = GetComponent<StateStackManager>();
             _isVisible = _startVisible;
+            _appliedLayout = OverlayLayout.Floating;
         }
 
         private void Update()
@@ -76,6 +86,8 @@ namespace WallstopStudios.DxState.State.Stack.Components
                 return;
             }
 
+            ApplyLayoutIfNecessary();
+
             _windowRect = GUILayout.Window(
                 GetInstanceID(),
                 _windowRect,
@@ -90,7 +102,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
 
             OverlayTab newTab = (OverlayTab)GUILayout.Toolbar(
                 (int)_selectedTab,
-                new[] { "Stack", "Events", "Progress", "Metrics" }
+                new[] { "Stack", "Events", "Progress", "Metrics", "Timeline" }
             );
             if (newTab != _selectedTab)
             {
@@ -121,10 +133,18 @@ namespace WallstopStudios.DxState.State.Stack.Components
                     DrawMetrics();
                     break;
                 }
+                case OverlayTab.Timeline:
+                {
+                    DrawTimeline();
+                    break;
+                }
             }
             GUILayout.EndScrollView();
 
-            GUI.DragWindow(new Rect(0f, 0f, 10000f, 20f));
+            if (!_lockWindow && _layoutMode == OverlayLayout.Floating)
+            {
+                GUI.DragWindow(new Rect(0f, 0f, 10000f, 20f));
+            }
         }
 
         private static string FormatStateName(IState state)
@@ -150,6 +170,19 @@ namespace WallstopStudios.DxState.State.Stack.Components
                 GUILayout.ExpandWidth(false)
             );
             GUILayout.FlexibleSpace();
+            if (GUILayout.Button(_layoutMode.ToString(), GUILayout.Width(100f)))
+            {
+                CycleLayout();
+            }
+            bool newLock = GUILayout.Toggle(
+                _lockWindow,
+                "Lock",
+                GUILayout.Width(60f)
+            );
+            if (newLock != _lockWindow)
+            {
+                _lockWindow = newLock;
+            }
             if (GUILayout.Button("Copy", GUILayout.Width(60f)))
             {
                 CopyDiagnosticsToClipboard();
@@ -196,6 +229,99 @@ namespace WallstopStudios.DxState.State.Stack.Components
             }
         }
 
+        private void ApplyLayoutIfNecessary()
+        {
+            if (_layoutMode == OverlayLayout.Floating)
+            {
+                _appliedLayout = OverlayLayout.Floating;
+                return;
+            }
+
+            if (_appliedLayout == _layoutMode)
+            {
+                return;
+            }
+
+            const float Margin = 16f;
+            float screenWidth = Screen.width;
+            float screenHeight = Screen.height;
+            Rect newRect = _windowRect;
+            switch (_layoutMode)
+            {
+                case OverlayLayout.TopLeft:
+                    newRect = new Rect(Margin, Margin, 360f, 260f);
+                    break;
+                case OverlayLayout.TopRight:
+                    newRect = new Rect(
+                        Mathf.Max(Margin, screenWidth - 360f - Margin),
+                        Margin,
+                        360f,
+                        260f
+                    );
+                    break;
+                case OverlayLayout.BottomLeft:
+                    newRect = new Rect(
+                        Margin,
+                        Mathf.Max(Margin, screenHeight - 260f - Margin),
+                        360f,
+                        260f
+                    );
+                    break;
+                case OverlayLayout.BottomRight:
+                    newRect = new Rect(
+                        Mathf.Max(Margin, screenWidth - 360f - Margin),
+                        Mathf.Max(Margin, screenHeight - 260f - Margin),
+                        360f,
+                        260f
+                    );
+                    break;
+                case OverlayLayout.DockedTop:
+                    newRect = new Rect(0f, 0f, screenWidth, Mathf.Min(180f, screenHeight * 0.35f));
+                    break;
+                case OverlayLayout.DockedBottom:
+                    newRect = new Rect(
+                        0f,
+                        Mathf.Max(0f, screenHeight - Mathf.Min(180f, screenHeight * 0.35f)),
+                        screenWidth,
+                        Mathf.Min(180f, screenHeight * 0.35f)
+                    );
+                    break;
+                case OverlayLayout.CompactHud:
+                    newRect = new Rect(
+                        screenWidth * 0.5f - 160f,
+                        Margin,
+                        320f,
+                        120f
+                    );
+                    break;
+            }
+
+            _windowRect = newRect;
+            _appliedLayout = _layoutMode;
+        }
+
+        private void CycleLayout()
+        {
+            Array values = Enum.GetValues(typeof(OverlayLayout));
+            int index = Array.IndexOf(values, _layoutMode);
+            index = (index + 1) % values.Length;
+            _layoutMode = (OverlayLayout)values.GetValue(index);
+            _appliedLayout = OverlayLayout.Floating;
+        }
+
+        [Serializable]
+        private enum OverlayLayout
+        {
+            Floating = 0,
+            TopLeft = 1,
+            TopRight = 2,
+            BottomLeft = 3,
+            BottomRight = 4,
+            DockedTop = 5,
+            DockedBottom = 6,
+            CompactHud = 7,
+        }
+
         private void DrawProgress()
         {
             IReadOnlyDictionary<string, float> progress = _stateStackManager.Diagnostics.LatestProgress;
@@ -208,6 +334,36 @@ namespace WallstopStudios.DxState.State.Stack.Components
             foreach (KeyValuePair<string, float> entry in progress)
             {
                 DrawProgressBar(entry.Key, entry.Value);
+            }
+        }
+
+        private void DrawTimeline()
+        {
+            IReadOnlyList<StateStackDiagnosticEvent> events =
+                _stateStackManager.Diagnostics.Events;
+            if (events.Count == 0)
+            {
+                GUILayout.Label("No events recorded yet.");
+                return;
+            }
+
+            Rect rect = GUILayoutUtility.GetRect(GUILayout.ExpandWidth(true), GUILayout.Height(80f));
+            if (Event.current.type == EventType.Repaint)
+            {
+                DrawTimelineChart(rect, events);
+            }
+
+            GUILayout.Space(4f);
+            GUILayout.Label("Recent Events", EditorStyles.boldLabel);
+            int displayed = 0;
+            for (int i = events.Count - 1; i >= 0 && displayed < 5; i--)
+            {
+                StateStackDiagnosticEvent entry = events[i];
+                GUILayout.Label(
+                    $"[{entry.TimestampUtc:HH:mm:ss}] {entry.EventType} → {entry.CurrentState}",
+                    EditorStyles.miniLabel
+                );
+                displayed++;
             }
         }
 
@@ -230,6 +386,61 @@ namespace WallstopStudios.DxState.State.Stack.Components
             GUI.Box(fill, GUIContent.none);
             GUI.backgroundColor = Color.white;
             GUI.Label(rect, $"{value:P0}", new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter });
+        }
+
+        private static void DrawTimelineChart(
+            Rect rect,
+            IReadOnlyList<StateStackDiagnosticEvent> events
+        )
+        {
+            const int maxSamples = 64;
+            int sampleCount = Mathf.Min(maxSamples, events.Count);
+            if (sampleCount <= 1)
+            {
+                EditorGUI.DrawRect(rect, new Color(0f, 0f, 0f, 0.3f));
+                return;
+            }
+
+            float padding = 6f;
+            Rect inner = new Rect(
+                rect.x + padding,
+                rect.y + padding,
+                rect.width - padding * 2f,
+                rect.height - padding * 2f
+            );
+
+            EditorGUI.DrawRect(inner, new Color(0f, 0f, 0f, 0.25f));
+
+            int startIndex = events.Count - sampleCount;
+            float step = inner.width / Mathf.Max(1, sampleCount - 1);
+            float barWidth = Mathf.Max(2f, step * 0.6f);
+
+            for (int i = 0; i < sampleCount; i++)
+            {
+                StateStackDiagnosticEvent entry = events[startIndex + i];
+                float x = inner.x + i * step - barWidth * 0.5f;
+                float intensity = Mathf.Clamp01((float)(i + 1) / sampleCount);
+                float height = Mathf.Lerp(4f, inner.height, intensity);
+                Rect bar = new Rect(x, inner.yMax - height, barWidth, height);
+                EditorGUI.DrawRect(bar, GetEventColor(entry.EventType));
+            }
+        }
+
+        private static Color GetEventColor(StateStackDiagnosticEventType eventType)
+        {
+            switch (eventType)
+            {
+                case StateStackDiagnosticEventType.TransitionStart:
+                    return new Color(0.3f, 0.7f, 1f, 0.9f);
+                case StateStackDiagnosticEventType.TransitionComplete:
+                    return new Color(0.2f, 0.9f, 0.5f, 0.9f);
+                case StateStackDiagnosticEventType.StatePushed:
+                    return new Color(0.85f, 0.7f, 0.2f, 0.9f);
+                case StateStackDiagnosticEventType.StatePopped:
+                    return new Color(0.95f, 0.4f, 0.3f, 0.9f);
+                default:
+                    return new Color(0.6f, 0.6f, 0.6f, 0.9f);
+            }
         }
 
         private void CopyDiagnosticsToClipboard()
