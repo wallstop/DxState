@@ -9,10 +9,10 @@ namespace WallstopStudios.DxState.Editor.State
     using UnityEditor.UIElements;
     using UnityEngine;
     using UnityEngine.UIElements;
+    using WallstopStudios.DxState.State.Machine;
     using WallstopStudios.DxState.State.Stack;
     using WallstopStudios.DxState.State.Stack.Builder;
     using WallstopStudios.DxState.State.Stack.Components;
-    using WallstopStudios.DxState.State.Machine;
     using WallstopStudios.DxState.State.Stack.Diagnostics;
 
     public sealed class StateGraphViewWindow : EditorWindow
@@ -220,7 +220,10 @@ namespace WallstopStudios.DxState.Editor.State
                 for (int i = 0; i < stacks.Count; i++)
                 {
                     StateGraphAsset.StackDefinition definition = stacks[i];
-                    if (definition != null && string.Equals(definition.Name, stackName, StringComparison.Ordinal))
+                    if (
+                        definition != null
+                        && string.Equals(definition.Name, stackName, StringComparison.Ordinal)
+                    )
                     {
                         return definition;
                     }
@@ -381,14 +384,10 @@ namespace WallstopStudios.DxState.Editor.State
                 "Tooltip",
                 tooltipProperty != null ? tooltipProperty.stringValue : string.Empty
             );
-            TransitionCause newCause = (TransitionCause)EditorGUILayout.EnumPopup(
-                "Cause",
-                priorCause
-            );
-            TransitionFlags newFlags = (TransitionFlags)EditorGUILayout.EnumFlagsField(
-                "Flags",
-                priorFlags
-            );
+            TransitionCause newCause = (TransitionCause)
+                EditorGUILayout.EnumPopup("Cause", priorCause);
+            TransitionFlags newFlags = (TransitionFlags)
+                EditorGUILayout.EnumFlagsField("Flags", priorFlags);
             if (EditorGUI.EndChangeCheck())
             {
                 Undo.RecordObject(_graphAsset, "Edit Transition Metadata");
@@ -489,7 +488,9 @@ namespace WallstopStudios.DxState.Editor.State
             StateStackConfiguration configuration = ResolveConfiguration(_graph, _stackName);
             if (_graphView != null)
             {
-                StateGraphAsset.StackDefinition stackDefinition = ResolveStackDefinition(_stackName);
+                StateGraphAsset.StackDefinition stackDefinition = ResolveStackDefinition(
+                    _stackName
+                );
                 _graphView.Populate(
                     _graphSerialized,
                     stackProperty,
@@ -689,7 +690,8 @@ namespace WallstopStudios.DxState.Editor.State
                 _stackProperty = stackProperty;
                 _graphAsset = graphAsset;
                 _configuration = configuration;
-                _metadataFallback = metadata ?? Array.Empty<StateGraphAsset.StateTransitionMetadata>();
+                _metadataFallback =
+                    metadata ?? Array.Empty<StateGraphAsset.StateTransitionMetadata>();
                 _transitionsProperty =
                     stackProperty != null
                         ? stackProperty.FindPropertyRelative("_transitions")
@@ -1123,8 +1125,9 @@ namespace WallstopStudios.DxState.Editor.State
                     && metadataIndex < _metadataFallback.Count
                 )
                 {
-                    StateGraphAsset.StateTransitionMetadata metadata =
-                        _metadataFallback[metadataIndex];
+                    StateGraphAsset.StateTransitionMetadata metadata = _metadataFallback[
+                        metadataIndex
+                    ];
                     edge.ApplyMetadata(
                         metadata.Label,
                         metadata.Tooltip,
@@ -1720,7 +1723,7 @@ namespace WallstopStudios.DxState.Editor.State
                 return relative != null ? relative.stringValue : string.Empty;
             }
 
-            private static TransitionCause GetTransitionCause(SerializedProperty property)
+            internal static TransitionCause GetTransitionCause(SerializedProperty property)
             {
                 SerializedProperty relative = property.FindPropertyRelative("_cause");
                 return relative != null
@@ -1728,12 +1731,10 @@ namespace WallstopStudios.DxState.Editor.State
                     : TransitionCause.Unspecified;
             }
 
-            private static TransitionFlags GetTransitionFlags(SerializedProperty property)
+            internal static TransitionFlags GetTransitionFlags(SerializedProperty property)
             {
                 SerializedProperty relative = property.FindPropertyRelative("_flags");
-                return relative != null
-                    ? (TransitionFlags)relative.intValue
-                    : TransitionFlags.None;
+                return relative != null ? (TransitionFlags)relative.intValue : TransitionFlags.None;
             }
 
             private void UpdateMetrics(StateStackDiagnostics diagnostics)
@@ -1990,7 +1991,9 @@ namespace WallstopStudios.DxState.Editor.State
                 {
                     string displayLabel = !string.IsNullOrWhiteSpace(label)
                         ? label
-                        : (cause != TransitionCause.Unspecified ? cause.ToString() : "<transition>");
+                        : (
+                            cause != TransitionCause.Unspecified ? cause.ToString() : "<transition>"
+                        );
                     _label.text = displayLabel;
                     string resolvedTooltip = tooltip;
                     if (string.IsNullOrWhiteSpace(resolvedTooltip))
@@ -1998,12 +2001,19 @@ namespace WallstopStudios.DxState.Editor.State
                         resolvedTooltip = BuildTooltip(cause, flags);
                     }
 
-                    this.tooltip = string.IsNullOrWhiteSpace(resolvedTooltip) ? null : resolvedTooltip;
+                    this.tooltip = string.IsNullOrWhiteSpace(resolvedTooltip)
+                        ? null
+                        : resolvedTooltip;
                 }
 
                 public void ClearMetadata()
                 {
-                    ApplyMetadata(string.Empty, string.Empty, TransitionCause.Unspecified, TransitionFlags.None);
+                    ApplyMetadata(
+                        string.Empty,
+                        string.Empty,
+                        TransitionCause.Unspecified,
+                        TransitionFlags.None
+                    );
                 }
 
                 public void RefreshAppearance(bool isActive)

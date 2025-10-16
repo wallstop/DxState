@@ -219,7 +219,7 @@ DxState is Wallstop Studios' state management package for Unity 2021.3, combinin
 
 - `ComponentStateTransition` composes rule delegates with `IStateComponent.ShouldEnter`, so tag-gated components or custom predicates can block transitions even if the machine rule allows entry.
 - Prefer encapsulating component states behind `IStateComponent` implementations—MonoBehaviour subclasses inherit the helper base `StateComponent`, while plain C# states can implement the interface directly for tests and headless contexts.
-- Designers can build the same graphs visually with `StateGraphAsset` (Assets ▸ Create ▸ Wallstop Studios ▸ DxState ▸ State Graph). Each stack definition records a name, ordered `IState` references, and which entry is active by default. Call `StateGraphAsset.BuildGraph()` at runtime to obtain `StateStackConfiguration` instances and apply them to your stacks.
+- Designers can build the same graphs visually with `StateGraphAsset` (Assets ▸ Create ▸ Wallstop Studios ▸ DxState ▸ State Graph). Each stack definition records a name, ordered `IState` references, and which entry is active by default. Call `StateGraphAsset.BuildGraph()` at runtime to obtain `StateStackConfiguration` instances and apply them to your stacks. The State Graph view now supports multiple labeled transitions between nodes with editable causes/flags and tooltips.
 - The State Graph view now supports multiple labelled transitions per pair of states; select an edge to edit its label, tooltip, cause, and flags, or drag between nodes to create new metadata-backed transitions.
 - The edit-mode suites `StateMachineBuilderTests`, `StateComponentTests`, and `StateStackDiagnosticsTests` cover builder usage, component gating, and deferred queue reporting.
 
