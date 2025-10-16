@@ -2,7 +2,6 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Machine.Diagnostics
 {
     using System;
     using System.Collections.Generic;
-    using System.Linq;
     using NUnit.Framework;
     using WallstopStudios.DxState.State.Machine;
     using WallstopStudios.DxState.State.Machine.Component;
@@ -41,10 +40,10 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Machine.Diagnostics
                 diagnostics.GetTransitionCauseCount(TransitionCause.RuleSatisfied)
             );
 
-            IReadOnlyCollection<StateMachineDiagnosticEvent<TestState>> events =
-                diagnostics.RecentTransitions;
-            Assert.AreEqual(1, events.Count);
-            StateMachineDiagnosticEvent<TestState> recordedEvent = events.First();
+            List<StateMachineDiagnosticEventRecord> eventRecords = new List<StateMachineDiagnosticEventRecord>();
+            diagnostics.CopyRecentEvents(eventRecords, 4);
+            Assert.AreEqual(1, eventRecords.Count);
+            StateMachineDiagnosticEventRecord recordedEvent = eventRecords[0];
             Assert.AreEqual(StateMachineDiagnosticEventType.TransitionExecuted, recordedEvent.EventType);
             Assert.AreSame(idle, recordedEvent.PreviousState);
             Assert.AreSame(active, recordedEvent.RequestedState);
@@ -69,10 +68,6 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Machine.Diagnostics
             List<StateMachineStateMetricsRecord> metricsRecords = new List<StateMachineStateMetricsRecord>();
             diagnostics.CopyStateMetrics(metricsRecords);
             Assert.AreEqual(2, metricsRecords.Count);
-
-            List<StateMachineDiagnosticEventRecord> eventRecords = new List<StateMachineDiagnosticEventRecord>();
-            diagnostics.CopyRecentEvents(eventRecords, 4);
-            Assert.AreEqual(1, eventRecords.Count);
         }
 
         [Test]
@@ -105,6 +100,7 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Machine.Diagnostics
             );
             machine.AttachDiagnostics(diagnostics);
 
+            List<StateMachineDiagnosticEventRecord> eventRecords = new List<StateMachineDiagnosticEventRecord>();
             machine.TransitionExecuted += context =>
             {
                 if (ReferenceEquals(context.CurrentState, active))
@@ -123,10 +119,20 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Machine.Diagnostics
             Assert.AreEqual(1, diagnostics.DeferredTransitionCount);
             Assert.AreEqual(2, diagnostics.GetTransitionCauseCount(TransitionCause.Forced));
 
-            IReadOnlyCollection<StateMachineDiagnosticEvent<TestState>> events =
-                diagnostics.RecentTransitions;
-            Assert.AreEqual(3, events.Count);
-            Assert.IsTrue(events.Any(evt => evt.EventType == StateMachineDiagnosticEventType.TransitionDeferred));
+            eventRecords.Clear();
+            diagnostics.CopyRecentEvents(eventRecords, 8);
+            Assert.AreEqual(3, eventRecords.Count);
+            bool sawDeferred = false;
+            for (int i = 0; i < eventRecords.Count; i++)
+            {
+                if (eventRecords[i].EventType == StateMachineDiagnosticEventType.TransitionDeferred)
+                {
+                    sawDeferred = true;
+                    break;
+                }
+            }
+
+            Assert.IsTrue(sawDeferred);
         }
 
         [Test]
@@ -151,15 +157,20 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Machine.Diagnostics
             );
             machine.AttachDiagnostics(diagnostics);
 
-            IReadOnlyList<StateMachineDiagnosticsEntry> entries =
-                StateMachineDiagnosticsRegistry.GetEntries();
-            Assert.IsTrue(
-                entries.Any(
-                    entry =>
-                        entry.StateType == typeof(TestState)
-                        && ReferenceEquals(entry.Diagnostics, diagnostics)
-                )
-            );
+            List<StateMachineDiagnosticsEntry> entries = new List<StateMachineDiagnosticsEntry>();
+            StateMachineDiagnosticsRegistry.FillEntries(entries);
+            bool found = false;
+            for (int i = 0; i < entries.Count; i++)
+            {
+                StateMachineDiagnosticsEntry entry = entries[i];
+                if (entry.StateType == typeof(TestState) && ReferenceEquals(entry.Diagnostics, diagnostics))
+                {
+                    found = true;
+                    break;
+                }
+            }
+
+            Assert.IsTrue(found);
         }
 
         private sealed class TestState : IStateContext<TestState>

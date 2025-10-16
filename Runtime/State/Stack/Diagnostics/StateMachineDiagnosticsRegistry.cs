@@ -2,12 +2,14 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
 {
     using System;
     using System.Collections.Generic;
+    using System.Threading;
     using WallstopStudios.DxState.State.Machine;
 
     public static class StateMachineDiagnosticsRegistry
     {
-        private static readonly object Gate = new object();
-        private static readonly List<IRegistration> Registrations = new List<IRegistration>();
+        private static readonly ReaderWriterLockSlim _lock =
+            new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
+        private static readonly List<IRegistration> _registrations = new List<IRegistration>();
 
         public static IDisposable Register<TState>(
             StateMachine<TState> machine,
@@ -25,38 +27,61 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
             }
 
             Registration<TState> registration = new Registration<TState>(machine, diagnostics);
-            lock (Gate)
+            _lock.EnterWriteLock();
+            try
             {
-                Registrations.Add(registration);
+                _registrations.Add(registration);
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
             }
 
             return registration;
         }
 
-        public static IReadOnlyList<StateMachineDiagnosticsEntry> GetEntries()
+        public static void FillEntries(List<StateMachineDiagnosticsEntry> buffer)
         {
-            lock (Gate)
+            if (buffer == null)
             {
-                List<StateMachineDiagnosticsEntry> snapshot = new List<StateMachineDiagnosticsEntry>(
-                    Registrations.Count
-                );
+                throw new ArgumentNullException(nameof(buffer));
+            }
 
-                for (int i = Registrations.Count - 1; i >= 0; i--)
+            _lock.EnterWriteLock();
+            try
+            {
+                buffer.Clear();
+                for (int i = _registrations.Count - 1; i >= 0; i--)
                 {
-                    IRegistration registration = Registrations[i];
+                    IRegistration registration = _registrations[i];
                     if (!registration.IsAlive)
                     {
-                        Registrations.RemoveAt(i);
+                        _registrations.RemoveAt(i);
                         continue;
                     }
 
                     if (registration.TryCreateEntry(out StateMachineDiagnosticsEntry entry))
                     {
-                        snapshot.Add(entry);
+                        buffer.Add(entry);
                     }
                 }
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
+            }
+        }
 
-                return snapshot;
+        private static void RemoveRegistration(IRegistration registration)
+        {
+            _lock.EnterWriteLock();
+            try
+            {
+                _registrations.Remove(registration);
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
             }
         }
 
@@ -111,17 +136,18 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
 
             public void Dispose()
             {
-                lock (Gate)
-                {
-                    Registrations.Remove(this);
-                }
+                RemoveRegistration(this);
             }
         }
     }
 
     public readonly struct StateMachineDiagnosticsEntry
     {
-        public StateMachineDiagnosticsEntry(Type stateType, object machine, object diagnostics)
+        public StateMachineDiagnosticsEntry(
+            Type stateType,
+            object machine,
+            IStateMachineDiagnosticsView diagnostics
+        )
         {
             StateType = stateType ?? throw new ArgumentNullException(nameof(stateType));
             Machine = machine;
@@ -132,6 +158,6 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
 
         public object Machine { get; }
 
-        public object Diagnostics { get; }
+        public IStateMachineDiagnosticsView Diagnostics { get; }
     }
 }

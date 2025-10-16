@@ -54,9 +54,14 @@ namespace WallstopStudios.DxState.State.Stack.Builder
             [SerializeField]
             private List<StateReference> _states = new List<StateReference>();
 
+            [SerializeField]
+            private List<StateTransitionMetadata> _transitions = new List<StateTransitionMetadata>();
+
             public string Name => _name;
 
             public IReadOnlyList<StateReference> States => _states;
+
+            public IReadOnlyList<StateTransitionMetadata> Transitions => _transitions;
 
             public StateStackConfiguration BuildConfiguration()
             {
@@ -121,6 +126,30 @@ namespace WallstopStudios.DxState.State.Stack.Builder
                     $"Serialized object '{_state.name}' does not implement IState."
                 );
             }
+        }
+
+        [Serializable]
+        public sealed class StateTransitionMetadata
+        {
+            [SerializeField]
+            private int _fromIndex;
+
+            [SerializeField]
+            private int _toIndex;
+
+            [SerializeField]
+            private string _label;
+
+            [SerializeField]
+            private string _tooltip;
+
+            public int FromIndex => _fromIndex;
+
+            public int ToIndex => _toIndex;
+
+            public string Label => _label;
+
+            public string Tooltip => _tooltip;
         }
     }
 }

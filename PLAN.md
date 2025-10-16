@@ -6,7 +6,7 @@
 
 ## High Priority
 1. [ ] Enrich GraphView authoring and debugging for complex state machines.
-   - Add edge-level metadata (transition cause, guard summary, context flags) and tooltips sourced from `TransitionContext` to mirror non-linear logic.
+   - Add edge-level metadata (transition cause, guard summary, context flags) and tooltips sourced from `TransitionContext` to mirror non-linear logic. (Completed – GraphView persistently stores labeled transitions with editable metadata.)
    - Support multi-edge branching: allow linking a node to multiple successors with labeled connections, including drag-to-create edges that inject new transition definitions back into the asset.
    - Provide inline metrics overlays (transition count, average duration, last triggered timestamp) by streaming data from `StateStackDiagnostics`; visually animate active edges. (Completed – GraphView nodes now surface diagnostics and active transitions pulse along highlighted edges.)
    - Implement state/node inspector syncing: selecting a node opens its serialized state (MonoBehaviour or ScriptableObject) in an embedded inspector panel for quick edits. (Completed – GraphView window now hosts a docked inspector that tracks the active node.)
@@ -28,6 +28,7 @@
 
 4. [ ] Expand runtime introspection APIs for tooling integration.
    - Add query APIs on `StateStack` and `StateMachine<T>` to retrieve transition history, branch structures, and region diagnostics for custom tooling. (In Progress – StateMachineDiagnostics now aggregates executed/deferred events, per-state enter/exit metrics, and cause counts, and editor tooling surfaces the live registry.)
+   - Provide editor-level configuration (ScriptableObject singleton) for diagnostics tooling to persist view preferences across sessions. (Completed – StateMachineDiagnosticsSettings now drives the diagnostics window.)
    - Emit editor events (UnityEvent or callback) when GraphView edits modify the underlying asset to allow other tools (e.g. CI lint) to react.
    - Provide serialization helpers to snapshot/restore entire hierarchical machine stacks for replay or unit testing.
 

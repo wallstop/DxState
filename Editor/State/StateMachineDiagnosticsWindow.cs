@@ -13,15 +13,20 @@ namespace WallstopStudios.DxState.Editor.State
         private static readonly TransitionCause[] Causes =
             (TransitionCause[])Enum.GetValues(typeof(TransitionCause));
 
+        private readonly List<StateMachineDiagnosticsEntry> _entries;
         private readonly List<StateMachineStateMetricsRecord> _metricsBuffer;
         private readonly List<StateMachineDiagnosticEventRecord> _eventsBuffer;
 
         private Vector2 _scrollPosition;
+        private bool _entriesNeedRefresh;
+        private bool _isSubscribedToUpdate;
 
         public StateMachineDiagnosticsWindow()
         {
+            _entries = new List<StateMachineDiagnosticsEntry>();
             _metricsBuffer = new List<StateMachineStateMetricsRecord>();
             _eventsBuffer = new List<StateMachineDiagnosticEventRecord>();
+            _entriesNeedRefresh = true;
         }
 
         [MenuItem("Window/Wallstop Studios/DxState/State Machine Diagnostics")]
@@ -33,22 +38,52 @@ namespace WallstopStudios.DxState.Editor.State
             window.minSize = new Vector2(360f, 240f);
         }
 
+        private StateMachineDiagnosticsSettings Settings => StateMachineDiagnosticsSettings.instance;
+
         private void OnEnable()
         {
-            EditorApplication.update += Repaint;
+            Settings.SettingsChanged += HandleSettingsChanged;
+            _entriesNeedRefresh = true;
+            UpdateSubscription();
+            RefreshEntries();
         }
 
         private void OnDisable()
         {
-            EditorApplication.update -= Repaint;
+            Settings.SettingsChanged -= HandleSettingsChanged;
+            if (_isSubscribedToUpdate)
+            {
+                EditorApplication.update -= OnEditorUpdate;
+                _isSubscribedToUpdate = false;
+            }
         }
 
         private void OnGUI()
         {
-            IReadOnlyList<StateMachineDiagnosticsEntry> entries =
-                StateMachineDiagnosticsRegistry.GetEntries();
+            EnsureEntries();
 
-            if (entries.Count == 0)
+            EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
+            EditorGUILayout.LabelField(
+                Settings.AutoRefresh ? "Auto Refresh: On" : "Auto Refresh: Off",
+                EditorStyles.toolbarButton,
+                GUILayout.Width(140f)
+            );
+            if (!Settings.AutoRefresh)
+            {
+                if (GUILayout.Button("Refresh", EditorStyles.toolbarButton, GUILayout.Width(80f)))
+                {
+                    RefreshEntries();
+                    Repaint();
+                }
+            }
+            if (GUILayout.Button("Settings", EditorStyles.toolbarButton, GUILayout.Width(80f)))
+            {
+                SettingsService.OpenProjectSettings("Project/Wallstop Studios/DxState/Diagnostics");
+            }
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
+
+            if (_entries.Count == 0)
             {
                 EditorGUILayout.HelpBox(
                     "No state machine diagnostics registered. Call AttachDiagnostics on your state machines at runtime to populate this view.",
@@ -58,10 +93,10 @@ namespace WallstopStudios.DxState.Editor.State
             }
 
             _scrollPosition = EditorGUILayout.BeginScrollView(_scrollPosition);
-            for (int i = 0; i < entries.Count; i++)
+            for (int i = 0; i < _entries.Count; i++)
             {
-                DrawEntry(entries[i]);
-                if (i < entries.Count - 1)
+                DrawEntry(_entries[i]);
+                if (i < _entries.Count - 1)
                 {
                     EditorGUILayout.Space();
                 }
@@ -72,22 +107,10 @@ namespace WallstopStudios.DxState.Editor.State
 
         private void DrawEntry(StateMachineDiagnosticsEntry entry)
         {
-            object diagnostics = entry.Diagnostics;
-            if (diagnostics == null)
-            {
-                return;
-            }
-
-            Type diagnosticsType = diagnostics.GetType();
-            int transitionCount = (int)diagnosticsType
-                .GetProperty(nameof(StateMachineDiagnostics<object>.TransitionCount))
-                .GetValue(diagnostics);
-            int deferredCount = (int)diagnosticsType
-                .GetProperty(nameof(StateMachineDiagnostics<object>.DeferredTransitionCount))
-                .GetValue(diagnostics);
-            DateTime? lastTransitionUtc = (DateTime?)diagnosticsType
-                .GetProperty(nameof(StateMachineDiagnostics<object>.LastTransitionUtc))
-                .GetValue(diagnostics);
+            IStateMachineDiagnosticsView diagnostics = entry.Diagnostics;
+            int transitionCount = diagnostics.TransitionCount;
+            int deferredCount = diagnostics.DeferredTransitionCount;
+            DateTime? lastTransitionUtc = diagnostics.LastTransitionUtc;
 
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.LabelField(entry.StateType.Name, EditorStyles.boldLabel);
@@ -114,12 +137,12 @@ namespace WallstopStudios.DxState.Editor.State
                     : "<never>"
             );
 
-            MethodInfoHelper.CopyMetrics(diagnosticsType, diagnostics, _metricsBuffer);
+            diagnostics.CopyStateMetrics(_metricsBuffer);
             DrawStateMetrics();
 
-            MethodInfoHelper.DrawCauseBreakdown(diagnosticsType, diagnostics, Causes);
+            DrawCauseBreakdown(diagnostics);
 
-            MethodInfoHelper.CopyEvents(diagnosticsType, diagnostics, _eventsBuffer, 5);
+            diagnostics.CopyRecentEvents(_eventsBuffer, Settings.RecentEventLimit);
             DrawRecentEvents();
 
             EditorGUILayout.EndVertical();
@@ -145,6 +168,34 @@ namespace WallstopStudios.DxState.Editor.State
                         $"Enter {metrics.EnterCount} | Exit {metrics.ExitCount}"
                     );
                 }
+            }
+        }
+
+        private void DrawCauseBreakdown(IStateMachineDiagnosticsView diagnostics)
+        {
+            bool headerWritten = false;
+            for (int i = 0; i < Causes.Length; i++)
+            {
+                TransitionCause cause = Causes[i];
+                int count = diagnostics.GetTransitionCauseCount(cause);
+                if (count <= 0)
+                {
+                    continue;
+                }
+
+                if (!headerWritten)
+                {
+                    EditorGUILayout.LabelField("Causes", EditorStyles.boldLabel);
+                    EditorGUI.indentLevel++;
+                    headerWritten = true;
+                }
+
+                EditorGUILayout.LabelField($"{cause}: {count}");
+            }
+
+            if (headerWritten)
+            {
+                EditorGUI.indentLevel--;
             }
         }
 
@@ -183,72 +234,46 @@ namespace WallstopStudios.DxState.Editor.State
             return state.ToString();
         }
 
-        private static class MethodInfoHelper
+        private void EnsureEntries()
         {
-            public static void CopyMetrics(
-                Type diagnosticsType,
-                object diagnostics,
-                List<StateMachineStateMetricsRecord> buffer
-            )
+            if (_entriesNeedRefresh)
             {
-                System.Reflection.MethodInfo method = diagnosticsType.GetMethod(
-                    nameof(StateMachineDiagnostics<object>.CopyStateMetrics)
-                );
-                method?.Invoke(diagnostics, new object[] { buffer });
+                RefreshEntries();
             }
+        }
 
-            public static void CopyEvents(
-                Type diagnosticsType,
-                object diagnostics,
-                List<StateMachineDiagnosticEventRecord> buffer,
-                int maxCount
-            )
+        private void RefreshEntries()
+        {
+            StateMachineDiagnosticsRegistry.FillEntries(_entries);
+            _entriesNeedRefresh = false;
+        }
+
+        private void HandleSettingsChanged()
+        {
+            UpdateSubscription();
+            _entriesNeedRefresh = true;
+            Repaint();
+        }
+
+        private void UpdateSubscription()
+        {
+            bool shouldSubscribe = Settings.AutoRefresh;
+            if (shouldSubscribe && !_isSubscribedToUpdate)
             {
-                System.Reflection.MethodInfo method = diagnosticsType.GetMethod(
-                    nameof(StateMachineDiagnostics<object>.CopyRecentEvents)
-                );
-                method?.Invoke(diagnostics, new object[] { buffer, maxCount });
+                EditorApplication.update += OnEditorUpdate;
+                _isSubscribedToUpdate = true;
             }
-
-            public static void DrawCauseBreakdown(
-                Type diagnosticsType,
-                object diagnostics,
-                TransitionCause[] causes
-            )
+            else if (!shouldSubscribe && _isSubscribedToUpdate)
             {
-                System.Reflection.MethodInfo method = diagnosticsType.GetMethod(
-                    nameof(StateMachineDiagnostics<object>.GetTransitionCauseCount)
-                );
-                if (method == null)
-                {
-                    return;
-                }
-
-                bool headerWritten = false;
-                for (int i = 0; i < causes.Length; i++)
-                {
-                    TransitionCause cause = causes[i];
-                    int count = (int)method.Invoke(diagnostics, new object[] { cause });
-                    if (count <= 0)
-                    {
-                        continue;
-                    }
-
-                    if (!headerWritten)
-                    {
-                        EditorGUILayout.LabelField("Causes", EditorStyles.boldLabel);
-                        EditorGUI.indentLevel++;
-                        headerWritten = true;
-                    }
-
-                    EditorGUILayout.LabelField($"{cause}: {count}");
-                }
-
-                if (headerWritten)
-                {
-                    EditorGUI.indentLevel--;
-                }
+                EditorApplication.update -= OnEditorUpdate;
+                _isSubscribedToUpdate = false;
             }
+        }
+
+        private void OnEditorUpdate()
+        {
+            _entriesNeedRefresh = true;
+            Repaint();
         }
     }
 }
