@@ -8,7 +8,7 @@
 1. [ ] Enrich GraphView authoring and debugging for complex state machines.
    - Add edge-level metadata (transition cause, guard summary, context flags) and tooltips sourced from `TransitionContext` to mirror non-linear logic.
    - Support multi-edge branching: allow linking a node to multiple successors with labeled connections, including drag-to-create edges that inject new transition definitions back into the asset.
-   - Provide inline metrics overlays (transition count, average duration, last triggered timestamp) by streaming data from `StateStackDiagnostics`; visually animate active edges.
+   - Provide inline metrics overlays (transition count, average duration, last triggered timestamp) by streaming data from `StateStackDiagnostics`; visually animate active edges. (Completed – GraphView nodes now surface diagnostics and active transitions pulse along highlighted edges.)
    - Implement state/node inspector syncing: selecting a node opens its serialized state (MonoBehaviour or ScriptableObject) in an embedded inspector panel for quick edits. (Completed – GraphView window now hosts a docked inspector that tracks the active node.)
    - Enable drag-and-drop authoring from Project view into GraphView to create new state references and auto-wire initial transitions. (Completed – GraphView now accepts dragged state assets and appends them with undo support.)
    - Record undoable operations for node reordering, edge edits, and state insertion/removal to ensure editor workflows stay safe.
@@ -27,7 +27,7 @@
    - Document best practices for using ScriptableObject vs MonoBehaviour states, including lifecycle requirements (enter/exit/tick) and dependency injection (e.g. via SerializedReference).
 
 4. [ ] Expand runtime introspection APIs for tooling integration.
-   - Add query APIs on `StateStack` and `StateMachine<T>` to retrieve transition history, branch structures, and region diagnostics for custom tooling.
+   - Add query APIs on `StateStack` and `StateMachine<T>` to retrieve transition history, branch structures, and region diagnostics for custom tooling. (In Progress – StateMachineDiagnostics now aggregates executed/deferred events, per-state enter/exit metrics, and cause counts.)
    - Emit editor events (UnityEvent or callback) when GraphView edits modify the underlying asset to allow other tools (e.g. CI lint) to react.
    - Provide serialization helpers to snapshot/restore entire hierarchical machine stacks for replay or unit testing.
 

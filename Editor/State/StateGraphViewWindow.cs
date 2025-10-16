@@ -12,6 +12,7 @@ namespace WallstopStudios.DxState.Editor.State
     using WallstopStudios.DxState.State.Stack;
     using WallstopStudios.DxState.State.Stack.Builder;
     using WallstopStudios.DxState.State.Stack.Components;
+    using WallstopStudios.DxState.State.Stack.Diagnostics;
 
     public sealed class StateGraphViewWindow : EditorWindow
     {
@@ -425,6 +426,9 @@ namespace WallstopStudios.DxState.Editor.State
             private StateStackManager _currentManager;
 
             private readonly List<StateNode> _nodes;
+            private readonly List<StateConnection> _connections;
+            private readonly Dictionary<string, StateMetricsSnapshot> _metricsCache;
+            private readonly Dictionary<string, StateMetricsAccumulator> _metricsAccumulators;
 
             public Action GraphModified { get; set; }
             public Action<UnityEngine.Object> StateSelected { get; set; }
@@ -432,6 +436,11 @@ namespace WallstopStudios.DxState.Editor.State
             public StateStackGraphView()
             {
                 _nodes = new List<StateNode>();
+                _connections = new List<StateConnection>();
+                _metricsCache = new Dictionary<string, StateMetricsSnapshot>(StringComparer.Ordinal);
+                _metricsAccumulators = new Dictionary<string, StateMetricsAccumulator>(
+                    StringComparer.Ordinal
+                );
                 this.SetupZoom(ContentZoomer.DefaultMinScale, ContentZoomer.DefaultMaxScale);
                 this.AddManipulator(new ContentDragger());
                 this.AddManipulator(new SelectionDragger());
@@ -447,27 +456,6 @@ namespace WallstopStudios.DxState.Editor.State
                 RegisterCallback<DragLeaveEvent>(OnDragLeave);
             }
 
-            protected override void OnSelectionChanged(List<ISelectable> selection)
-            {
-                base.OnSelectionChanged(selection);
-
-                UnityEngine.Object selectedObject = null;
-                if (selection != null)
-                {
-                    for (int i = 0; i < selection.Count; i++)
-                    {
-                        StateNode node = selection[i] as StateNode;
-                        if (node != null)
-                        {
-                            selectedObject = node.StateObject;
-                            break;
-                        }
-                    }
-                }
-
-                StateSelected?.Invoke(selectedObject);
-            }
-
             public void DisposeView()
             {
                 ClearSelection();
@@ -477,6 +465,7 @@ namespace WallstopStudios.DxState.Editor.State
                 UnregisterCallback<DragLeaveEvent>(OnDragLeave);
                 DeleteElements(graphElements.ToList());
                 _nodes.Clear();
+                _connections.Clear();
                 _serializedGraph = null;
                 _stackProperty = null;
                 _graphAsset = null;
@@ -502,6 +491,7 @@ namespace WallstopStudios.DxState.Editor.State
                 StateSelected?.Invoke(null);
                 DeleteElements(graphElements.ToList());
                 _nodes.Clear();
+                _connections.Clear();
 
                 if (_stackProperty == null)
                 {
@@ -639,6 +629,8 @@ namespace WallstopStudios.DxState.Editor.State
             public void Highlight(StateStackManager manager)
             {
                 _currentManager = manager;
+                UpdateMetrics(manager?.Diagnostics);
+
                 foreach (StateNode node in _nodes)
                 {
                     node.SetActiveState(false, false);
@@ -646,16 +638,21 @@ namespace WallstopStudios.DxState.Editor.State
 
                 if (manager == null)
                 {
+                    UpdateActiveConnections(null, null);
                     return;
                 }
 
                 IReadOnlyList<IState> stack = manager.Stack;
                 if (stack == null)
                 {
+                    UpdateActiveConnections(null, null);
                     return;
                 }
 
                 IState current = stack.Count > 0 ? stack[stack.Count - 1] : null;
+                IState previous = manager.PreviousState;
+                StateNode currentNode = null;
+                StateNode previousNode = null;
                 for (int i = 0; i < stack.Count; i++)
                 {
                     IState state = stack[i];
@@ -667,13 +664,23 @@ namespace WallstopStudios.DxState.Editor.State
                     for (int n = 0; n < _nodes.Count; n++)
                     {
                         StateNode node = _nodes[n];
-                        if (node.StateObject is IState nodeState && ReferenceEquals(nodeState, state)
-                            || ReferenceEquals(node.ResolvedState, state))
+                        if (node.MatchesState(state))
                         {
                             node.SetActiveState(true, ReferenceEquals(state, current));
+                            if (ReferenceEquals(state, current))
+                            {
+                                currentNode = node;
+                            }
+
+                            if (ReferenceEquals(state, previous))
+                            {
+                                previousNode = node;
+                            }
                         }
                     }
                 }
+
+                UpdateActiveConnections(previousNode, currentNode);
             }
 
             public override void BuildContextualMenu(ContextualMenuPopulateEvent evt)
@@ -735,6 +742,7 @@ namespace WallstopStudios.DxState.Editor.State
             public void DisposeEdges()
             {
                 DeleteElements(graphElements.OfType<Edge>().ToList());
+                _connections.Clear();
             }
 
             public void DisposeNodes()
@@ -752,6 +760,9 @@ namespace WallstopStudios.DxState.Editor.State
                     StateNode next = _nodes[i + 1];
                     Edge connection = current.Output.ConnectTo(next.Input);
                     AddElement(connection);
+                    StateConnection stateConnection = new StateConnection(current, next, connection);
+                    _connections.Add(stateConnection);
+                    stateConnection.RefreshAppearance(false);
                     current.RefreshPorts();
                     next.RefreshPorts();
                 }
@@ -904,6 +915,7 @@ namespace WallstopStudios.DxState.Editor.State
             {
                 private readonly StateStackGraphView _owner;
                 private readonly Label _descriptionLabel;
+                private readonly Label _metricsLabel;
                 private readonly Color _baseColor;
                 private readonly Color _initialColor = new Color(0.2f, 0.5f, 0.3f, 1f);
                 private readonly Color _missingColor = new Color(0.6f, 0.2f, 0.2f, 1f);
@@ -912,6 +924,7 @@ namespace WallstopStudios.DxState.Editor.State
 
                 public UnityEngine.Object StateObject { get; set; }
                 public IState ResolvedState { get; }
+                public string StateName { get; }
                 public Port Input { get; }
                 public Port Output { get; }
                 public int ArrayIndex { get; set; }
@@ -939,6 +952,8 @@ namespace WallstopStudios.DxState.Editor.State
                     ResolvedState = resolvedState;
                     _baseColor = new Color(0.2f, 0.2f, 0.28f, 1f);
                     _descriptionLabel = new Label();
+                    _metricsLabel = new Label();
+                    StateName = DetermineStateName(stateObject, resolvedState);
 
                     this.title = stateObject != null
                         ? stateObject.name
@@ -946,6 +961,12 @@ namespace WallstopStudios.DxState.Editor.State
 
                     _descriptionLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
                     mainContainer.Add(_descriptionLabel);
+
+                    _metricsLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+                    _metricsLabel.style.fontSize = 10;
+                    _metricsLabel.style.whiteSpace = WhiteSpace.Normal;
+                    _metricsLabel.style.color = new Color(0.82f, 0.82f, 0.82f, 1f);
+                    mainContainer.Add(_metricsLabel);
 
                     Input = InstantiatePort(
                         Orientation.Horizontal,
@@ -975,6 +996,18 @@ namespace WallstopStudios.DxState.Editor.State
                             EditorGUIUtility.PingObject(StateObject);
                         }
                     });
+                }
+
+                public override void OnSelected()
+                {
+                    base.OnSelected();
+                    _owner.NotifySelectionChange();
+                }
+
+                public override void OnUnselected()
+                {
+                    base.OnUnselected();
+                    _owner.NotifySelectionChange();
                 }
 
                 public void SetActiveState(bool isActive, bool isCurrent)
@@ -1012,6 +1045,7 @@ namespace WallstopStudios.DxState.Editor.State
                     {
                         _descriptionLabel.text = "Missing reference";
                         _descriptionLabel.style.color = Color.red;
+                        _metricsLabel.text = string.Empty;
                     }
                     else
                     {
@@ -1020,6 +1054,7 @@ namespace WallstopStudios.DxState.Editor.State
                             : StateObject.GetType().Name;
                         _descriptionLabel.text = description;
                         _descriptionLabel.style.color = Color.white;
+                        _metricsLabel.text = string.Empty;
                     }
                 }
 
@@ -1046,6 +1081,281 @@ namespace WallstopStudios.DxState.Editor.State
                             ? DropdownMenuAction.Status.Normal
                             : DropdownMenuAction.Status.Disabled
                     );
+                }
+
+                public void ApplyMetrics(StateMetricsSnapshot metrics)
+                {
+                    if (metrics.HasData)
+                    {
+                        string lastTriggered = metrics.LastTriggeredUtc.HasValue
+                            ? metrics.LastTriggeredUtc.Value.ToLocalTime().ToString("HH:mm:ss")
+                            : "--:--:--";
+                        string averageLabel = metrics.AverageDurationSeconds > 0f
+                            ? metrics.AverageDurationSeconds.ToString("F2")
+                            : "0.00";
+                        _metricsLabel.text =
+                            $"Transitions: {metrics.TransitionCount}\nAvg: {averageLabel}s\nLast: {lastTriggered}";
+                    }
+                    else
+                    {
+                        _metricsLabel.text = "No telemetry";
+                    }
+                }
+
+                public bool MatchesState(IState state)
+                {
+                    if (state == null)
+                    {
+                        return false;
+                    }
+
+                    if (StateObject is IState nodeState && ReferenceEquals(nodeState, state))
+                    {
+                        return true;
+                    }
+
+                    if (ResolvedState != null && ReferenceEquals(ResolvedState, state))
+                    {
+                        return true;
+                    }
+
+                    return false;
+                }
+
+                private static string DetermineStateName(
+                    UnityEngine.Object stateObject,
+                    IState resolvedState
+                )
+                {
+                    if (stateObject != null)
+                    {
+                        return stateObject.name;
+                    }
+
+                    return resolvedState != null ? resolvedState.Name : string.Empty;
+                }
+            }
+
+            private void UpdateMetrics(StateStackDiagnostics diagnostics)
+            {
+                _metricsAccumulators.Clear();
+                if (diagnostics == null)
+                {
+                    ApplyMetricsToNodes();
+                    return;
+                }
+
+                IReadOnlyList<StateStackDiagnosticEvent> events = diagnostics.Events;
+                if (events == null || events.Count == 0)
+                {
+                    ApplyMetricsToNodes();
+                    return;
+                }
+
+                Dictionary<string, DateTime> transitionStarts = new Dictionary<string, DateTime>(
+                    StringComparer.Ordinal
+                );
+
+                for (int i = 0; i < events.Count; i++)
+                {
+                    StateStackDiagnosticEvent entry = events[i];
+                    string currentStateName = string.IsNullOrEmpty(entry.CurrentState)
+                        ? "<null>"
+                        : entry.CurrentState;
+
+                    switch (entry.EventType)
+                    {
+                        case StateStackDiagnosticEventType.TransitionStart:
+                            transitionStarts[currentStateName] = entry.TimestampUtc;
+                            break;
+                        case StateStackDiagnosticEventType.TransitionComplete:
+                            RecordMetricsSample(currentStateName, entry.TimestampUtc, transitionStarts);
+                            break;
+                        case StateStackDiagnosticEventType.StatePushed:
+                        case StateStackDiagnosticEventType.StatePopped:
+                        case StateStackDiagnosticEventType.StateFlattened:
+                        case StateStackDiagnosticEventType.StateRemoved:
+                            UpdateLastTriggered(currentStateName, entry.TimestampUtc);
+                            break;
+                    }
+                }
+
+                ApplyMetricsToNodes();
+            }
+
+            private void RecordMetricsSample(
+                string stateName,
+                DateTime timestampUtc,
+                Dictionary<string, DateTime> transitionStarts
+            )
+            {
+                if (string.IsNullOrEmpty(stateName))
+                {
+                    return;
+                }
+
+                if (!_metricsAccumulators.TryGetValue(stateName, out StateMetricsAccumulator accumulator))
+                {
+                    accumulator = new StateMetricsAccumulator();
+                    _metricsAccumulators[stateName] = accumulator;
+                }
+
+                accumulator.TransitionCount++;
+                accumulator.LastTriggeredUtc = timestampUtc;
+
+                if (transitionStarts.TryGetValue(stateName, out DateTime startTimeUtc))
+                {
+                    float duration = Mathf.Max(
+                        0f,
+                        (float)(timestampUtc - startTimeUtc).TotalSeconds
+                    );
+                    accumulator.TotalDurationSeconds += duration;
+                    accumulator.DurationSamples++;
+                }
+            }
+
+            private void UpdateLastTriggered(string stateName, DateTime timestampUtc)
+            {
+                if (string.IsNullOrEmpty(stateName))
+                {
+                    return;
+                }
+
+                if (!_metricsAccumulators.TryGetValue(stateName, out StateMetricsAccumulator accumulator))
+                {
+                    accumulator = new StateMetricsAccumulator();
+                    _metricsAccumulators[stateName] = accumulator;
+                }
+
+                if (!accumulator.LastTriggeredUtc.HasValue || accumulator.LastTriggeredUtc < timestampUtc)
+                {
+                    accumulator.LastTriggeredUtc = timestampUtc;
+                }
+            }
+
+            private void ApplyMetricsToNodes()
+            {
+                _metricsCache.Clear();
+                foreach (KeyValuePair<string, StateMetricsAccumulator> entry in _metricsAccumulators)
+                {
+                    StateMetricsAccumulator accumulator = entry.Value;
+                    float average = accumulator.DurationSamples > 0
+                        ? accumulator.TotalDurationSeconds / accumulator.DurationSamples
+                        : 0f;
+                    _metricsCache[entry.Key] = new StateMetricsSnapshot(
+                        accumulator.TransitionCount,
+                        average,
+                        accumulator.LastTriggeredUtc
+                    );
+                }
+
+                for (int i = 0; i < _nodes.Count; i++)
+                {
+                    StateNode node = _nodes[i];
+                    if (string.IsNullOrEmpty(node.StateName))
+                    {
+                        node.ApplyMetrics(StateMetricsSnapshot.Empty);
+                        continue;
+                    }
+
+                    if (_metricsCache.TryGetValue(node.StateName, out StateMetricsSnapshot metrics))
+                    {
+                        node.ApplyMetrics(metrics);
+                    }
+                    else
+                    {
+                        node.ApplyMetrics(StateMetricsSnapshot.Empty);
+                    }
+                }
+            }
+
+            private void UpdateActiveConnections(StateNode previous, StateNode current)
+            {
+                for (int i = 0; i < _connections.Count; i++)
+                {
+                    StateConnection connection = _connections[i];
+                    bool isActive = previous != null
+                        && current != null
+                        && ReferenceEquals(connection.From, previous)
+                        && ReferenceEquals(connection.To, current);
+                    connection.RefreshAppearance(isActive);
+                }
+            }
+
+            public void NotifySelectionChange()
+            {
+                UnityEngine.Object selectedObject = null;
+                foreach (ISelectable selectable in selection)
+                {
+                    StateNode node = selectable as StateNode;
+                    if (node != null)
+                    {
+                        selectedObject = node.StateObject;
+                        break;
+                    }
+                }
+
+                StateSelected?.Invoke(selectedObject);
+            }
+
+            private sealed class StateMetricsAccumulator
+            {
+                public int TransitionCount;
+                public int DurationSamples;
+                public float TotalDurationSeconds;
+                public DateTime? LastTriggeredUtc;
+            }
+
+            private readonly struct StateMetricsSnapshot
+            {
+                public StateMetricsSnapshot(
+                    int transitionCount,
+                    float averageDurationSeconds,
+                    DateTime? lastTriggeredUtc
+                )
+                {
+                    TransitionCount = transitionCount;
+                    AverageDurationSeconds = averageDurationSeconds;
+                    LastTriggeredUtc = lastTriggeredUtc;
+                }
+
+                public int TransitionCount { get; }
+                public float AverageDurationSeconds { get; }
+                public DateTime? LastTriggeredUtc { get; }
+                public bool HasData => TransitionCount > 0 || LastTriggeredUtc.HasValue;
+
+                public static StateMetricsSnapshot Empty => new StateMetricsSnapshot(0, 0f, null);
+            }
+
+            private sealed class StateConnection
+            {
+                private static readonly Color ActiveColor = new Color(0.3f, 0.85f, 1f, 1f);
+                private static readonly Color IdleColor = new Color(0.25f, 0.25f, 0.25f, 0.85f);
+
+                public StateConnection(StateNode from, StateNode to, Edge edge)
+                {
+                    From = from;
+                    To = to;
+                    Edge = edge;
+                }
+
+                public StateNode From { get; }
+                public StateNode To { get; }
+                public Edge Edge { get; }
+
+                public void RefreshAppearance(bool isActive)
+                {
+                    EdgeControl edgeControl = Edge.Q<EdgeControl>();
+                    if (edgeControl == null)
+                    {
+                        return;
+                    }
+
+                    Color color = isActive ? ActiveColor : IdleColor;
+                    edgeControl.edgeWidth = isActive ? 4 : 2;
+                    edgeControl.inputColor = color;
+                    edgeControl.outputColor = color;
+                    edgeControl.MarkDirtyRepaint();
                 }
             }
         }

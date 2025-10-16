@@ -1,6 +1,8 @@
 namespace WallstopStudios.DxState.Tests.EditMode.State.Machine.Diagnostics
 {
     using System;
+    using System.Collections.Generic;
+    using System.Linq;
     using NUnit.Framework;
     using WallstopStudios.DxState.State.Machine;
     using WallstopStudios.DxState.State.Machine.Component;
@@ -9,7 +11,7 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Machine.Diagnostics
     public sealed class StateMachineDiagnosticsTests
     {
         [Test]
-        public void RecordsRecentTransitions()
+        public void RecordsRecentTransitionsAndMetrics()
         {
             TestState idle = new TestState("Idle");
             TestState active = new TestState("Active");
@@ -32,12 +34,92 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Machine.Diagnostics
 
             machine.Update();
 
-            Assert.AreEqual(1, diagnostics.RecentTransitions.Count);
-            foreach (TransitionExecutionContext<TestState> context in diagnostics.RecentTransitions)
+            Assert.AreEqual(1, diagnostics.TransitionCount);
+            Assert.AreEqual(0, diagnostics.DeferredTransitionCount);
+            Assert.AreEqual(
+                1,
+                diagnostics.GetTransitionCauseCount(TransitionCause.RuleSatisfied)
+            );
+
+            IReadOnlyCollection<StateMachineDiagnosticEvent<TestState>> events =
+                diagnostics.RecentTransitions;
+            Assert.AreEqual(1, events.Count);
+            StateMachineDiagnosticEvent<TestState> recordedEvent = events.First();
+            Assert.AreEqual(StateMachineDiagnosticEventType.TransitionExecuted, recordedEvent.EventType);
+            Assert.AreSame(idle, recordedEvent.PreviousState);
+            Assert.AreSame(active, recordedEvent.RequestedState);
+            Assert.IsTrue(recordedEvent.HasExecutionContext);
+
+            Assert.IsTrue(diagnostics.TryGetLastTransition(out TransitionExecutionContext<TestState> lastContext));
+            Assert.AreSame(active, lastContext.CurrentState);
+            Assert.AreSame(idle, lastContext.PreviousState);
+
+            Assert.IsTrue(diagnostics.LastTransitionUtc.HasValue);
+
+            Assert.IsTrue(diagnostics.TryGetStateMetrics(active, out StateMachineStateMetrics activeMetrics));
+            Assert.AreEqual(1, activeMetrics.EnterCount);
+            Assert.AreEqual(0, activeMetrics.ExitCount);
+            Assert.IsTrue(activeMetrics.LastEnteredUtc.HasValue);
+
+            Assert.IsTrue(diagnostics.TryGetStateMetrics(idle, out StateMachineStateMetrics idleMetrics));
+            Assert.AreEqual(0, idleMetrics.EnterCount);
+            Assert.AreEqual(1, idleMetrics.ExitCount);
+            Assert.IsTrue(idleMetrics.LastExitedUtc.HasValue);
+        }
+
+        [Test]
+        public void RecordsDeferredTransitions()
+        {
+            TestState idle = new TestState("Idle");
+            TestState active = new TestState("Active");
+            TestState standby = new TestState("Standby");
+
+            Transition<TestState> idleToActive = new Transition<TestState>(
+                idle,
+                active,
+                new ToggleRule(true),
+                new TransitionContext(TransitionCause.RuleSatisfied)
+            );
+            Transition<TestState> activeToStandby = new Transition<TestState>(
+                active,
+                standby,
+                new ToggleRule(true),
+                new TransitionContext(TransitionCause.RuleSatisfied)
+            );
+
+            StateMachine<TestState> machine = new StateMachine<TestState>(
+                new[] { idleToActive, activeToStandby },
+                idle
+            );
+
+            StateMachineDiagnostics<TestState> diagnostics = new StateMachineDiagnostics<TestState>(
+                4
+            );
+            machine.AttachDiagnostics(diagnostics);
+
+            machine.TransitionExecuted += context =>
             {
-                Assert.AreSame(idle, context.PreviousState);
-                Assert.AreSame(active, context.CurrentState);
-            }
+                if (ReferenceEquals(context.CurrentState, active))
+                {
+                    machine.ForceTransition(
+                        standby,
+                        new TransitionContext(TransitionCause.Forced, TransitionFlags.Forced)
+                    );
+                }
+            };
+
+            machine.Update();
+            machine.Update();
+
+            Assert.AreEqual(2, diagnostics.TransitionCount);
+            Assert.AreEqual(1, diagnostics.DeferredTransitionCount);
+            Assert.AreEqual(2, diagnostics.GetTransitionCauseCount(TransitionCause.Forced));
+
+            IReadOnlyCollection<StateMachineDiagnosticEvent<TestState>> events =
+                diagnostics.RecentTransitions;
+            Assert.AreEqual(3, events.Count);
+            Assert.IsTrue(events.Any(evt => evt.EventType == StateMachineDiagnosticEventType.TransitionDeferred));
+        }
         }
 
         private sealed class TestState : IStateContext<TestState>

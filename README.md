@@ -190,11 +190,12 @@ DxState is Wallstop Studios' state management package for Unity 2021.3, combinin
 
 - **Scenario states & factories** (`Runtime/State/Stack/States/Scenarios`): Use the built-in states for cutscenes, dialogue, tutorials, networking, waiting, and scene orchestration when you need drop-in behaviour.
 - **`StateGraphBuilder` / `StateStackBuilder`** (`Runtime/State/Stack/Builder`): Compose stacks programmatically—`StateGraphBuilder` handles multi-stack graphs, while `StateStackBuilder` configures a single stack.
-- **Trigger/Component state machines** (`Runtime/State/Machine`): For localized logic, rely on `StateMachine<T>` or `TriggerStateMachine<TState, TTrigger>` and attach `StateMachineDiagnostics<T>` when you need transition history in tooling.
+- **Trigger/Component state machines** (`Runtime/State/Machine`): For localized logic, rely on `StateMachine<T>` or `TriggerStateMachine<TState, TTrigger>` and attach `StateMachineDiagnostics<T>` when you need transition history, per-state enter/exit metrics, and cause breakdowns in tooling.
 
 ## Diagnostics
 
 - `StateStackManager.Diagnostics` exposes a rolling history of transitions and the latest progress values for each active state. Use it to surface history in custom tooling or logs.
+- `StateMachineDiagnostics<T>` now captures recent executed/deferred transitions, aggregates cause counts, and tracks per-state enter/exit moments so editor tooling can render lightweight insights without instrumenting production code.
 - In the Editor, the custom `StateStackManager` inspector surfaces the live stack, registered states (with push/flatten controls), diagnostics, and a one-click clear button while in play mode.
 - Open **Window ▸ Wallstop Studios ▸ DxState ▸ State Stack Debugger** to monitor stacks in a dedicated editor window, push new states by name, and inspect diagnostics without selecting the manager object.
 - Drop the `StateStackDiagnosticsOverlay` MonoBehaviour on the same object as `StateStackManager` (included in the sample prefab) to toggle an in-game overlay that lists the active stack and recent events (default hotkey: `F9`).
