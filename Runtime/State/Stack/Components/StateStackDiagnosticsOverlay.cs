@@ -26,6 +26,18 @@ namespace WallstopStudios.DxState.State.Stack.Components
         [SerializeField]
         private bool _lockWindow;
 
+        [SerializeField]
+        private bool _showTransitionStart = true;
+
+        [SerializeField]
+        private bool _showTransitionComplete = true;
+
+        [SerializeField]
+        private bool _showStatePushed = true;
+
+        [SerializeField]
+        private bool _showStatePopped = true;
+
         private enum OverlayTab
         {
             Stack = 0,
@@ -41,6 +53,16 @@ namespace WallstopStudios.DxState.State.Stack.Components
         private OverlayTab _selectedTab;
         private Vector2 _scrollPosition;
         private OverlayLayout _appliedLayout;
+        private bool _isPaused;
+        private readonly List<StateStackDiagnosticEvent> _pausedEvents =
+            new List<StateStackDiagnosticEvent>();
+        private readonly List<IState> _pausedStack = new List<IState>();
+        private readonly Dictionary<string, float> _pausedProgress =
+            new Dictionary<string, float>(StringComparer.Ordinal);
+        private StateStackMetricSnapshot _pausedMetrics;
+        private int _pausedEventCursor;
+        private readonly List<StateStackDiagnosticEvent> _timelineBuffer =
+            new List<StateStackDiagnosticEvent>();
 
         public void Configure(KeyCode toggleKey, bool startVisible, int eventsToDisplay)
         {
@@ -181,6 +203,17 @@ namespace WallstopStudios.DxState.State.Stack.Components
             {
                 _lockWindow = newLock;
             }
+            if (GUILayout.Button(_isPaused ? "Resume" : "Pause", GUILayout.Width(70f)))
+            {
+                TogglePause();
+            }
+            bool previousEnabled = GUI.enabled;
+            GUI.enabled = _isPaused;
+            if (GUILayout.Button("Step", GUILayout.Width(60f)) && _isPaused)
+            {
+                StepForward();
+            }
+            GUI.enabled = previousEnabled;
             if (GUILayout.Button("Copy", GUILayout.Width(60f)))
             {
                 CopyDiagnosticsToClipboard();
@@ -190,7 +223,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
 
         private void DrawStack()
         {
-            IReadOnlyList<IState> stackSnapshot = _stateStackManager.Stack;
+            IReadOnlyList<IState> stackSnapshot = GetStackSource();
             GUILayout.Label($"Stack Depth: {stackSnapshot.Count}");
             GUILayout.Label($"Current State: {FormatStateName(_stateStackManager.CurrentState)}");
             GUILayout.Space(4f);
@@ -204,7 +237,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
 
         private void DrawEvents()
         {
-            IReadOnlyList<StateStackDiagnosticEvent> events = _stateStackManager.Diagnostics.Events;
+            IReadOnlyList<StateStackDiagnosticEvent> events = GetEventSource();
             int eventsToShow = Mathf.Min(_eventsToDisplay, events.Count);
             if (eventsToShow == 0)
             {
@@ -218,12 +251,50 @@ namespace WallstopStudios.DxState.State.Stack.Components
             _eventsToDisplay = Mathf.Clamp(Mathf.RoundToInt(slider), 1, 32);
             GUILayout.EndHorizontal();
 
+            GUILayout.BeginHorizontal();
+            _showTransitionStart = GUILayout.Toggle(
+                _showTransitionStart,
+                "Start",
+                GUILayout.Width(70f)
+            );
+            _showTransitionComplete = GUILayout.Toggle(
+                _showTransitionComplete,
+                "Complete",
+                GUILayout.Width(90f)
+            );
+            _showStatePushed = GUILayout.Toggle(
+                _showStatePushed,
+                "Pushed",
+                GUILayout.Width(80f)
+            );
+            _showStatePopped = GUILayout.Toggle(
+                _showStatePopped,
+                "Popped",
+                GUILayout.Width(80f)
+            );
+            GUILayout.EndHorizontal();
+
+            int displayed = 0;
             for (int i = events.Count - 1; i >= events.Count - eventsToShow; i--)
             {
                 StateStackDiagnosticEvent entry = events[i];
+                if (!IsEventVisible(entry.EventType))
+                {
+                    continue;
+                }
+
+                Color previous = GUI.color;
+                GUI.color = GetEventColor(entry.EventType);
                 GUILayout.Label(
                     $"[{entry.TimestampUtc.ToLocalTime():HH:mm:ss.fff}] {entry.EventType} » {entry.CurrentState}"
                 );
+                GUI.color = previous;
+                displayed++;
+            }
+
+            if (displayed == 0)
+            {
+                GUILayout.Label("No events match current filters.");
             }
         }
 
@@ -317,9 +388,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
 
         private void DrawProgress()
         {
-            IReadOnlyDictionary<string, float> progress = _stateStackManager
-                .Diagnostics
-                .LatestProgress;
+            IReadOnlyDictionary<string, float> progress = GetProgressSource();
             if (progress.Count == 0)
             {
                 GUILayout.Label("No progress reported yet.");
@@ -334,7 +403,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
 
         private void DrawTimeline()
         {
-            IReadOnlyList<StateStackDiagnosticEvent> events = _stateStackManager.Diagnostics.Events;
+            IReadOnlyList<StateStackDiagnosticEvent> events = GetTimelineEvents();
             if (events.Count == 0)
             {
                 GUILayout.Label("No events recorded yet.");
@@ -353,10 +422,13 @@ namespace WallstopStudios.DxState.State.Stack.Components
             for (int i = events.Count - 1; i >= 0 && displayed < 5; i--)
             {
                 StateStackDiagnosticEvent entry = events[i];
+                Color previous = GUI.color;
+                GUI.color = GetEventColor(entry.EventType);
                 GUILayout.Label(
                     $"[{entry.TimestampUtc:HH:mm:ss}] {entry.EventType} → {entry.CurrentState}",
                     EditorStyles.miniLabel
                 );
+                GUI.color = previous;
                 displayed++;
             }
         }
@@ -439,6 +511,152 @@ namespace WallstopStudios.DxState.State.Stack.Components
                 default:
                     return new Color(0.6f, 0.6f, 0.6f, 0.9f);
             }
+        }
+
+        private bool IsEventVisible(StateStackDiagnosticEventType eventType)
+        {
+            switch (eventType)
+            {
+                case StateStackDiagnosticEventType.TransitionStart:
+                    return _showTransitionStart;
+                case StateStackDiagnosticEventType.TransitionComplete:
+                    return _showTransitionComplete;
+                case StateStackDiagnosticEventType.StatePushed:
+                    return _showStatePushed;
+                case StateStackDiagnosticEventType.StatePopped:
+                    return _showStatePopped;
+                default:
+                    return true;
+            }
+        }
+
+        private IReadOnlyList<StateStackDiagnosticEvent> GetEventSource()
+        {
+            return _isPaused ? _pausedEvents : _stateStackManager.Diagnostics.Events;
+        }
+
+        private IReadOnlyList<StateStackDiagnosticEvent> GetTimelineEvents()
+        {
+            IReadOnlyList<StateStackDiagnosticEvent> source = GetEventSource();
+            if (
+                _showTransitionStart
+                && _showTransitionComplete
+                && _showStatePushed
+                && _showStatePopped
+            )
+            {
+                return source;
+            }
+
+            _timelineBuffer.Clear();
+            for (int i = 0; i < source.Count; i++)
+            {
+                StateStackDiagnosticEvent entry = source[i];
+                if (IsEventVisible(entry.EventType))
+                {
+                    _timelineBuffer.Add(entry);
+                }
+            }
+
+            return _timelineBuffer;
+        }
+
+        private IReadOnlyList<IState> GetStackSource()
+        {
+            return _isPaused ? _pausedStack : _stateStackManager.Stack;
+        }
+
+        private IReadOnlyDictionary<string, float> GetProgressSource()
+        {
+            return _isPaused
+                ? (IReadOnlyDictionary<string, float>)_pausedProgress
+                : _stateStackManager.Diagnostics.LatestProgress;
+        }
+
+        private StateStackMetricSnapshot GetMetricsSource()
+        {
+            return _isPaused
+                ? _pausedMetrics
+                : _stateStackManager.Diagnostics.GetMetricsSnapshot();
+        }
+
+        private void TogglePause()
+        {
+            if (_isPaused)
+            {
+                _isPaused = false;
+                return;
+            }
+
+            if (CaptureSnapshot())
+            {
+                _isPaused = true;
+            }
+        }
+
+        private void StepForward()
+        {
+            if (!_isPaused)
+            {
+                return;
+            }
+
+            StateStackDiagnostics diagnostics = _stateStackManager.Diagnostics;
+            if (diagnostics == null)
+            {
+                return;
+            }
+            IReadOnlyList<StateStackDiagnosticEvent> events = diagnostics.Events;
+            if (_pausedEventCursor < events.Count)
+            {
+                _pausedEvents.Add(events[_pausedEventCursor]);
+                _pausedEventCursor++;
+                CaptureDynamicSnapshots(diagnostics);
+            }
+        }
+
+        private bool CaptureSnapshot()
+        {
+            StateStackDiagnostics diagnostics = _stateStackManager.Diagnostics;
+            if (diagnostics == null)
+            {
+                return false;
+            }
+
+            _pausedEvents.Clear();
+            IReadOnlyList<StateStackDiagnosticEvent> events = diagnostics.Events;
+            for (int i = 0; i < events.Count; i++)
+            {
+                _pausedEvents.Add(events[i]);
+            }
+            _pausedEventCursor = _pausedEvents.Count;
+
+            CaptureDynamicSnapshots(diagnostics);
+            return true;
+        }
+
+        private void CaptureDynamicSnapshots(StateStackDiagnostics diagnostics)
+        {
+            if (diagnostics == null)
+            {
+                return;
+            }
+
+            _pausedStack.Clear();
+            IReadOnlyList<IState> stack = _stateStackManager.Stack;
+            for (int i = 0; i < stack.Count; i++)
+            {
+                _pausedStack.Add(stack[i]);
+            }
+
+            _pausedProgress.Clear();
+            IReadOnlyDictionary<string, float> progress = diagnostics.LatestProgress;
+            foreach (KeyValuePair<string, float> entry in progress)
+            {
+                _pausedProgress[entry.Key] = entry.Value;
+            }
+
+            _pausedMetrics = diagnostics.GetMetricsSnapshot();
         }
 
         private void CopyDiagnosticsToClipboard()

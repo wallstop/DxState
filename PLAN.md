@@ -15,7 +15,7 @@
 
 2. [ ] Deepen diagnostics overlay UX for live debugging.
    - Offer preset layouts (corner, docked strip, compact HUD) and a lock toggle to prevent accidental repositioning. (Completed – diagnostics overlay now supports layout cycling and position locking.)
-   - Expose filters (e.g. only failures/manual transitions) and severity color-coding to focus on actionable events during play mode.
+   - Expose filters (e.g. only failures/manual transitions) and severity color-coding to focus on actionable events during play mode. (Completed – overlay now has event-type filters and color-coded listings.)
    - Add pause/step controls to temporarily halt automatic updates, step through queued transitions, or examine snapshots without losing context.
    - Provide timeline visualization (small sparkline/timeline) of the past N transitions with durations and causes; allow bookmarking/pinning a state for closer inspection. (Completed – diagnostics overlay now includes a sparkline-style timeline of recent transitions.)
    - Support theming (color/font scale) for readability on various backgrounds and accessibility needs.
