@@ -140,49 +140,94 @@ namespace WallstopStudios.DxState.State.Stack.Components
             return _stateStack.Unregister(stateName);
         }
 
-        public async ValueTask PushAsync(IState newState)
+        public ValueTask PushAsync(IState newState)
         {
-            await _stateStack.PushAsync(newState);
+            return _stateStack.PushAsync(newState);
         }
 
-        public async ValueTask PushAsync(string stateName)
+        public ValueTask PushAsync(IState newState, StateTransitionOptions options)
         {
-            await _stateStack.PushAsync(stateName);
+            return _stateStack.PushAsync(newState, options);
         }
 
-        public async ValueTask<IState> PopAsync()
+        public ValueTask PushAsync(string stateName)
         {
-            return await _stateStack.PopAsync();
+            return _stateStack.PushAsync(stateName);
         }
 
-        public async ValueTask<IState> TryPopAsync()
+        public ValueTask PushAsync(string stateName, StateTransitionOptions options)
         {
-            return await _stateStack.TryPopAsync();
+            return _stateStack.PushAsync(stateName, options);
         }
 
-        public async ValueTask FlattenAsync(IState state)
+        public ValueTask<IState> PopAsync()
         {
-            await _stateStack.FlattenAsync(state);
+            return _stateStack.PopAsync();
         }
 
-        public async ValueTask FlattenAsync(string stateName)
+        public ValueTask<IState> PopAsync(StateTransitionOptions options)
         {
-            await _stateStack.FlattenAsync(stateName);
+            return _stateStack.PopAsync(options);
         }
 
-        public async ValueTask RemoveAsync(string stateName)
+        public ValueTask<IState> TryPopAsync()
         {
-            await _stateStack.RemoveAsync(stateName);
+            return _stateStack.TryPopAsync();
         }
 
-        public async ValueTask RemoveAsync(IState stateToRemove)
+        public ValueTask<IState> TryPopAsync(StateTransitionOptions options)
         {
-            await _stateStack.RemoveAsync(stateToRemove);
+            return _stateStack.TryPopAsync(options);
         }
 
-        public async ValueTask ClearAsync()
+        public ValueTask FlattenAsync(IState state)
         {
-            await _stateStack.ClearAsync();
+            return _stateStack.FlattenAsync(state);
+        }
+
+        public ValueTask FlattenAsync(IState state, StateTransitionOptions options)
+        {
+            return _stateStack.FlattenAsync(state, options);
+        }
+
+        public ValueTask FlattenAsync(string stateName)
+        {
+            return _stateStack.FlattenAsync(stateName);
+        }
+
+        public ValueTask FlattenAsync(string stateName, StateTransitionOptions options)
+        {
+            return _stateStack.FlattenAsync(stateName, options);
+        }
+
+        public ValueTask RemoveAsync(string stateName)
+        {
+            return _stateStack.RemoveAsync(stateName);
+        }
+
+        public ValueTask RemoveAsync(string stateName, StateTransitionOptions options)
+        {
+            return _stateStack.RemoveAsync(stateName, options);
+        }
+
+        public ValueTask RemoveAsync(IState stateToRemove)
+        {
+            return _stateStack.RemoveAsync(stateToRemove);
+        }
+
+        public ValueTask RemoveAsync(IState stateToRemove, StateTransitionOptions options)
+        {
+            return _stateStack.RemoveAsync(stateToRemove, options);
+        }
+
+        public ValueTask ClearAsync()
+        {
+            return _stateStack.ClearAsync();
+        }
+
+        public ValueTask ClearAsync(StateTransitionOptions options)
+        {
+            return _stateStack.ClearAsync(options);
         }
 
         protected override async void Start()

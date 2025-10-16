@@ -88,6 +88,33 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Machine
         }
 
         [Test]
+        public void GlobalTransitionsExecuteRegardlessOfCurrentState()
+        {
+            TestState idle = new TestState("Idle");
+            TestState combat = new TestState("Combat");
+            TestState stunned = new TestState("Stunned");
+
+            bool triggerStun = false;
+
+            StateMachineBuilder<TestState> builder = new StateMachineBuilder<TestState>();
+            builder
+                .AddTransition(idle, combat, () => true)
+                .AddAnyTransition(stunned, () => triggerStun);
+
+            StateMachine<TestState> stateMachine = builder.Build(idle);
+
+            stateMachine.Update();
+            Assert.AreSame(combat, stateMachine.CurrentState);
+
+            triggerStun = true;
+            stateMachine.Update();
+
+            Assert.AreSame(stunned, stateMachine.CurrentState);
+            Assert.IsFalse(combat.IsActive);
+            Assert.IsTrue(stunned.IsActive);
+        }
+
+        [Test]
         public void StructBasedRuleExecutesTransition()
         {
             ToggleRule rule = new ToggleRule(true);
@@ -145,6 +172,35 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Machine
             machine.Update();
 
             Assert.AreEqual(1, deferredCount);
+        }
+
+        [Test]
+        public void PreviousStateCanBeRecovered()
+        {
+            TestState first = new TestState("First");
+            TestState second = new TestState("Second");
+            TestState third = new TestState("Third");
+
+            StateMachineBuilder<TestState> builder = new StateMachineBuilder<TestState>();
+            builder
+                .AddTransition(first, second, () => true)
+                .AddTransition(second, third, () => true);
+
+            StateMachine<TestState> machine = builder.Build(first);
+
+            machine.Update();
+            machine.Update();
+
+            Assert.AreSame(third, machine.CurrentState);
+            Assert.IsTrue(machine.TryGetPreviousState(out TestState previous));
+            Assert.AreSame(second, previous);
+
+            bool restored = machine.TryTransitionToPreviousState(
+                new TransitionContext(TransitionCause.Manual)
+            );
+
+            Assert.IsTrue(restored);
+            Assert.AreSame(second, machine.CurrentState);
         }
 
         [Test]

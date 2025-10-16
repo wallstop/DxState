@@ -27,15 +27,7 @@ namespace WallstopStudios.DxState.State.Machine
                 throw new ArgumentNullException(nameof(transition));
             }
 
-            bool added = _uniqueTransitions.Add(transition);
-            if (!added)
-            {
-                throw new InvalidOperationException(
-                    "The provided transition has already been registered with this builder."
-                );
-            }
-
-            _transitions.Add(transition);
+            RegisterTransition(transition);
             return this;
         }
 
@@ -66,6 +58,48 @@ namespace WallstopStudios.DxState.State.Machine
             return AddTransition(transition);
         }
 
+        public StateMachineBuilder<TState> AddAnyTransition(
+            TState to,
+            Func<bool> rule,
+            TransitionContext context = default
+        )
+        {
+            if (rule == null)
+            {
+                throw new ArgumentNullException(nameof(rule));
+            }
+
+            Transition<TState> transition = new Transition<TState>(
+                default,
+                to,
+                rule,
+                context,
+                isGlobal: true
+            );
+            return AddTransition(transition);
+        }
+
+        public StateMachineBuilder<TState> AddAnyTransition(
+            TState to,
+            ITransitionRule rule,
+            TransitionContext context = default
+        )
+        {
+            if (rule == null)
+            {
+                throw new ArgumentNullException(nameof(rule));
+            }
+
+            Transition<TState> transition = new Transition<TState>(
+                default,
+                to,
+                rule,
+                context,
+                isGlobal: true
+            );
+            return AddTransition(transition);
+        }
+
         public StateMachine<TState> Build(TState initialState)
         {
             List<Transition<TState>> snapshot = new List<Transition<TState>>(_transitions.Count);
@@ -75,6 +109,19 @@ namespace WallstopStudios.DxState.State.Machine
             }
 
             return new StateMachine<TState>(snapshot, initialState);
+        }
+
+        private void RegisterTransition(Transition<TState> transition)
+        {
+            bool added = _uniqueTransitions.Add(transition);
+            if (!added)
+            {
+                throw new InvalidOperationException(
+                    "The provided transition has already been registered with this builder."
+                );
+            }
+
+            _transitions.Add(transition);
         }
     }
 }

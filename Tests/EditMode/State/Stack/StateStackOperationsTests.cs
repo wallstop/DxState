@@ -4,6 +4,7 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
     using System.Collections;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Threading;
     using System.Threading.Tasks;
     using NUnit.Framework;
     using UnityEngine.TestTools;
@@ -234,6 +235,101 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
             Assert.AreEqual(0, pendingSnapshots[^1]);
             Assert.IsTrue(lifetimeSnapshots.Contains(1));
             Assert.AreEqual(2, lifetimeSnapshots[^1]);
+        }
+
+        [UnityTest]
+        public IEnumerator PushAsyncHonorsCancellationForCancellableState()
+        {
+            StateStack stateStack = new StateStack();
+            CancellableDelayGameState cancellableState = new CancellableDelayGameState(
+                "CancellableDelay",
+                TimeSpan.FromSeconds(10)
+            );
+            CancellationTokenSource cancellationSource = new CancellationTokenSource();
+
+            ValueTask pushTask = stateStack.PushAsync(
+                cancellableState,
+                StateTransitionOptions.FromCancellation(cancellationSource.Token)
+            );
+
+            cancellationSource.Cancel();
+
+            Task task = pushTask.AsTask();
+            while (!task.IsCompleted)
+            {
+                yield return null;
+            }
+
+            cancellationSource.Dispose();
+
+            Assert.IsTrue(task.IsFaulted);
+            Exception aggregate = task.Exception;
+            Exception resolvedException = aggregate != null ? aggregate.InnerException ?? aggregate : null;
+            Assert.IsNotNull(resolvedException);
+            Assert.IsInstanceOf<StateTransitionCanceledException>(resolvedException);
+            StateTransitionCanceledException canceledException = (StateTransitionCanceledException)resolvedException;
+            Assert.AreEqual(StateTransitionPhase.Enter, canceledException.Phase);
+        }
+
+        [UnityTest]
+        public IEnumerator PushAsyncTimesOutWhenStateIgnoresCancellation()
+        {
+            StateStack stateStack = new StateStack();
+            DelayState blockingState = new DelayState(
+                "BlockingState",
+                TimeSpan.FromMilliseconds(100)
+            );
+
+            ValueTask pushTask = stateStack.PushAsync(
+                blockingState,
+                StateTransitionOptions.FromTimeout(TimeSpan.FromMilliseconds(10))
+            );
+
+            Task task = pushTask.AsTask();
+            while (!task.IsCompleted)
+            {
+                yield return null;
+            }
+
+            Assert.IsTrue(task.IsFaulted);
+            Exception aggregate = task.Exception;
+            Exception resolvedException = aggregate != null ? aggregate.InnerException ?? aggregate : null;
+            Assert.IsNotNull(resolvedException);
+            Assert.IsInstanceOf<StateTransitionTimeoutException>(resolvedException);
+            StateTransitionTimeoutException timeoutException = (StateTransitionTimeoutException)resolvedException;
+            Assert.AreEqual(StateTransitionPhase.Enter, timeoutException.Phase);
+            Assert.AreEqual(TimeSpan.FromMilliseconds(10), timeoutException.Timeout);
+        }
+
+        [UnityTest]
+        public IEnumerator PushAsyncTreatsSuppressedTimeoutAsCancellation()
+        {
+            StateStack stateStack = new StateStack();
+            DelayState blockingState = new DelayState(
+                "BlockingSuppressed",
+                TimeSpan.FromMilliseconds(100)
+            );
+
+            StateTransitionOptions options = StateTransitionOptions.FromTimeout(
+                TimeSpan.FromMilliseconds(10),
+                false
+            );
+
+            ValueTask pushTask = stateStack.PushAsync(blockingState, options);
+
+            Task task = pushTask.AsTask();
+            while (!task.IsCompleted)
+            {
+                yield return null;
+            }
+
+            Assert.IsTrue(task.IsFaulted);
+            Exception aggregate = task.Exception;
+            Exception resolvedException = aggregate != null ? aggregate.InnerException ?? aggregate : null;
+            Assert.IsNotNull(resolvedException);
+            Assert.IsInstanceOf<StateTransitionCanceledException>(resolvedException);
+            StateTransitionCanceledException canceledException = (StateTransitionCanceledException)resolvedException;
+            Assert.AreEqual(StateTransitionPhase.Enter, canceledException.Phase);
         }
 
         [UnityTest]
@@ -513,6 +609,93 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
                 where TProgress : IProgress<float>
             {
                 progress.Report(1f);
+                return new ValueTask();
+            }
+        }
+
+        private sealed class CancellableDelayGameState : GameState
+        {
+            private readonly string _stateName;
+            private readonly TimeSpan _delay;
+
+            public CancellableDelayGameState(string stateName, TimeSpan delay)
+            {
+                if (string.IsNullOrWhiteSpace(stateName))
+                {
+                    throw new ArgumentException("State name must be provided", nameof(stateName));
+                }
+
+                _stateName = stateName;
+                _delay = delay;
+            }
+
+            public override string Name => _stateName;
+
+            public override async ValueTask Enter<TProgress>(
+                IState previousState,
+                TProgress progress,
+                StateDirection direction,
+                CancellationToken cancellationToken
+            )
+            {
+                await base.Enter(previousState, progress, direction, cancellationToken);
+                await Task.Delay(_delay, cancellationToken);
+            }
+        }
+
+        private sealed class DelayState : IState
+        {
+            private readonly string _name;
+            private readonly TimeSpan _delay;
+
+            public DelayState(string name, TimeSpan delay)
+            {
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    throw new ArgumentException("State name must be provided", nameof(name));
+                }
+
+                _name = name;
+                _delay = delay;
+            }
+
+            public string Name => _name;
+
+            public TickMode TickMode => TickMode.None;
+
+            public bool TickWhenInactive => false;
+
+            public float? TimeInState => null;
+
+            public async ValueTask Enter<TProgress>(
+                IState previousState,
+                TProgress progress,
+                StateDirection direction
+            )
+                where TProgress : IProgress<float>
+            {
+                await Task.Delay(_delay);
+            }
+
+            public void Tick(TickMode mode, float delta) { }
+
+            public ValueTask Exit<TProgress>(
+                IState nextState,
+                TProgress progress,
+                StateDirection direction
+            )
+                where TProgress : IProgress<float>
+            {
+                return new ValueTask();
+            }
+
+            public ValueTask Remove<TProgress>(
+                IReadOnlyList<IState> previousStatesInStack,
+                IReadOnlyList<IState> nextStatesInStack,
+                TProgress progress
+            )
+                where TProgress : IProgress<float>
+            {
                 return new ValueTask();
             }
         }

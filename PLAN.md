@@ -1,34 +1,58 @@
-# Improvement Plan
+# DxState Improvement Plan
 
-## Priority 0 – Usability & API Clarity
-- [x] Collapse the two-component bootstrap flow into a single, beginner-friendly surface by folding the registration/push logic from `Runtime/State/Stack/Components/StateStackBootstrapper.cs:40-140` directly into `Runtime/State/Stack/Components/StateStackManager.cs:36-118`, with serialized lists for states and an opt-in auto-add of `MessagingComponent` so newcomers do not have to script anything before they can push a state.
-- [x] Add a high-level "Beginner" facade on top of `Runtime/State/Stack/StateStack.cs` and `Runtime/State/Stack/Components/StateStackManager.cs` that exposes synchronous `PushState`, `PopState`, and `ReplaceState` helpers (wrapping the existing `ValueTask` APIs internally) plus optional `UnityEvent` callbacks, making the core API obvious to users who are unfamiliar with async flows.
-- [x] Expand onboarding material (README plus a quick-start sample scene) to mirror the simplified workflow above, including a diagram of stack transitions and a glossary of `IState`, `GameState`, and diagnostics concepts so entry-level users can follow along without digging through code.
+## High Priority
+1. [x] Add hierarchical and orthogonal state machinery across stack and component surfaces.
+   - Status: Completed — hierarchical contexts, global transitions, history, coordinators, composite/MonoBehaviour helpers, stack regions, and priority policies are in place.
+   - Observations: `Runtime/State/Machine/StateMachine.cs:17` only models flat transitions and lacks enter/exit propagation to child machines; `Runtime/State/Stack/StateStack.cs:95` manages a simple pushdown stack without nested sub-stacks or history states.
+   - Approach: Introduce composite `IStateContext`/`IState` implementations that can own child machines, add history/any-state semantics, and surface APIs for configurable parallel regions. Provide migration helpers so existing states can opt in without breaking changes.
+   - Impact: Unlocks complex game flows (UI overlays, combat modes) without spinning up additional managers, improves usability and extendability for teams expecting HFSM/statechart capabilities similar to Animator/Playmaker.
 
-## Priority 1 – Correctness & Observability
-- [x] Fix the misleading deferred-transition counter by tracking both "current" and "lifetime" metrics and emitting balanced events from `Runtime/State/Stack/StateStack.cs:626-688`, then update `Runtime/State/Stack/Diagnostics/StateStackDiagnostics.cs:123-171` to display both values so tooling reflects the actual queue depth novices expect.
-- [x] Cache the DxMessaging bridge delegates created in `Runtime/State/Stack/Components/StateStackManager.cs:36-79` and unregister them inside `OnDestroy` to avoid leaking manager references and ensure diagnostics/overlays behave correctly when stacks are reloaded in play mode.
-- [x] Harden `Runtime/State/Stack/Components/StateStackBootstrapper.cs:70-140` so it validates duplicate registrations and surfaces clear inspector errors (instead of silent returns) when the initial state is missing or when required dependencies are absent.
+2. [ ] Ship visual authoring & debugging tools for `StateGraphAsset` and live stacks.
+   - Status: In progress — editor window with stack editing/search, and live manager controls implemented; next up: graph visualization & diagnostics overlays.
+   - Observations: `Runtime/State/Stack/Builder/StateGraphAsset.cs:13` defines data containers but there is no dedicated editor (only `Editor/State/StateStackManagerEditor.cs` for runtime inspection).
+   - Approach: Build a UI Toolkit/GraphView editor to author graphs, generate transitions, simulate flows, and push changes into play mode. Add a runtime inspector overlay showing queued transitions, progress, and diagnostics beyond the existing overlay.
+   - Impact: Dramatically lowers onboarding cost, aligns with designer expectations (graph editing), and improves understandability/debuggability.
 
-## Priority 2 – Runtime Performance & Allocations
-- [x] Replace the two `Progress<float>` instances allocated in the `StateStack` constructor (`Runtime/State/Stack/StateStack.cs:87-95`) with a pooled, struct-based reporter so transition progress updates stop capturing lambdas on every stack creation.
-- [x] Refactor `InternalPushAsync`, `InternalPopAsync`, `InternalFlattenAsync`, and `InternalRemoveAsync` in `Runtime/State/Stack/StateStack.cs:200-520` to eliminate the per-transition closures passed into `ExecuteStateOperationAsync` and instead route through reusable struct commands (or cached delegates) to meet the zero-closure goal.
-- [x] Rework the `TransitionTask` machinery in `Runtime/State/Stack/StateStack.cs:620-707` to avoid allocating `Func` instances and `TaskCompletionSource` objects; mirror the custom `TransitionCompletionSource` pooling pattern for the queue itself.
-- [x] Swap the `TaskCompletionSource` inside `Runtime/Extensions/UnityExtensions.cs:40-114` for a `ManualResetValueTaskSourceCore<bool>` (or reuse `TransitionCompletionSource`) so `AwaitWithProgress` can run without heap allocations or closure captures.
-- [x] Remove the local function allocation in `Runtime/State/Stack/Components/StateStackBootstrapper.cs:92-123` by lifting it into a private helper method and pre-sizing the working lists to avoid repeated list growth during registration scans.
+3. [x] Harden asynchronous transitions with cancellation, timeouts, and fault recovery.
+   - Status: Completed — `StateTransitionOptions` added for cancellation/timeout, `StateStack` propagates tokens, exposes timeout/cancel exceptions, and tests cover new behaviours.
+   - Observations: Entry/exit paths in `Runtime/State/Stack/StateStack.cs:215` await `ValueTask` without cancellation; `FunctionalState`/`GameplayLoopState` rely on user-supplied delegates that can hang.
+   - Approach: Thread a `CancellationToken` (or scoped transition token) through `Enter/Exit/Remove`, expose timeout policies, and surface diagnostics when a state stalls. Ensure `TransitionCompletionSource` can propagate cancellations cleanly.
+   - Impact: Improves robustness, avoids hard locks in production, and gives teams tooling to abort problematic states safely.
 
-## Priority 3 – Feature Depth & Extensibility
-- [x] Let `Runtime/State/Stack/Components/StateStackManager.cs` ingest a `StateGraphAsset` (`Runtime/State/Stack/Builder/StateGraphAsset.cs:13-112`) at runtime so designers can author stacks entirely in data without touching code, matching the usability goals.
-- [x] Extend diagnostics with a beginner-friendly HUD preset that ships enabled (building on `Runtime/State/Stack/Diagnostics/StateStackDiagnostics.cs` and the overlay component) so new users immediately see what the stack is doing without extra wiring.
-- [x] Provide script templates or menu items that scaffold `GameState` subclasses with the recommended overrides, reducing guesswork and keeping implementations consistent.
+## Medium Priority
+4. [ ] Refactor transition rules to support allocation-free structs and preallocated pools.
+   - Status: Not started
+   - Observations: `StateMachineBuilder.AddTransition` (Runtime/State/Machine/StateMachineBuilder.cs:32) captures `Func<bool>` delegates; `ComponentStateTransition.cs:24` wraps target state checks with new lambdas; `FunctionalState.cs:11` and `GameplayLoopState.cs:19` keep delegate fields. Each instantiation allocates and prevents Burst-friendly usage.
+   - Approach: Introduce generic `Transition<TState, TRule>` where `TRule : struct, ITransitionRule`, add pooled rule instances, and extend builders/factories to work with `WallstopArrayPool`/`WallstopFastArrayPool` for reusable buffers. Provide source analyzers to flag high-frequency closures.
+   - Impact: Reduces GC pressure in hot paths, enabling deterministic behaviour for performance-sensitive projects and easing integration with Burst/DOTS code.
 
-## Priority 4 – Test Coverage & Tooling
-- [x] Add edit-mode coverage that asserts DxMessaging events fire for every transition hook (augmenting `Tests/EditMode/State/Stack/StateStackLoggingTests.cs` by injecting a test receiver) so the bridge cannot regress silently.
-- [x] Cover the corrected deferred-transition metrics with explicit unit tests in `Tests/EditMode/State/Stack/Diagnostics/StateStackDiagnosticsTests.cs`, ensuring both current-depth and lifetime counts stay accurate when transitions queue and drain.
-- [x] Introduce allocation-focused play-mode tests (using `UnityEngine.Profiling.Recorder` or `Unity.PerformanceTesting`) around `StateStack.PushAsync`/`PopAsync` and `UnityExtensions.AwaitWithProgress` to lock in the zero-closure, zero-GC contract.
-- [x] Add regression tests for bootstrap failure scenarios (missing initial state, duplicate registrations) once the improved validation is in place so onboarding errors surface through the test suite as well as the inspector.
+5. [ ] Provide persistent snapshot & restore support for stacks and machines.
+   - Status: Not started
+   - Observations: Neither `StateStack` nor `StateMachine` expose serialization beyond transient diagnostics.
+   - Approach: Define serializable descriptors (state id, progress, queued transitions), integrate with `SerializedMessageAwareComponent`, and offer save/load APIs plus editor validation. Support partial restores (e.g., restoring only specific stacks) for usability.
+   - Impact: Enables save systems, level restarts, and tooling that require durable state, boosting robustness and ease of use in real games.
 
-## Priority 5 – Robustness & Runtime Safety
-- [x] Ensure every public async entry point (`Runtime/State/Stack/StateStack.cs`, `StateStackManager.cs`) guards against misuse from background threads and logs a clear error instead of proceeding, keeping behaviour deterministic for inexperienced users.
-- [x] Audit and clamp stack operations that rely on `IState.Name` uniqueness (e.g., `Runtime/State/Stack/StateStack.cs:133-173`) so null or duplicate names trigger explicit exceptions with remediation hints.
-- [x] Provide safe fallbacks in `Runtime/Extensions/UnityExtensions.cs` when editor-only reflection fails (lines 56-63), logging guidance instead of silently skipping progress to aid debugging on stripped player builds.
+6. [ ] Expand pooled collection usage in scenario states and builders.
+   - Status: Not started
+   - Observations: `StateGroup.CopyChildStates` and various factories (`SceneStateFactory.cs:65`, `ExclusiveSceneSetState.cs:42`) allocate new `List<>` buffers each call; graph builders call `_states.ToArray()` (`StateStackBuilder.cs:66`).
+   - Approach: Replace ad-hoc `List` snapshots with `PooledArray<T>`/`WallstopArrayPool<T>` backed spans, provide helper utilities for deterministic cleanup, and benchmark gains with the existing test harness.
+   - Impact: Shrinks transient GC allocations when composing states at runtime or building graphs repeatedly, improving performance for dynamic content pipelines.
+
+7. [ ] Add DOTS/job-system friendly adapters and Burst-compatible state flows.
+   - Status: Not started
+   - Observations: Current APIs rely on managed delegates and UnityEngine types, blocking use inside ECS systems.
+   - Approach: Introduce pure C# struct-based state machines (no UnityEngine dependency), add conversion layers to mirror stack changes into Entities, and document scheduling patterns.
+   - Impact: Extends the feature set to projects using Entities or high-performance gameplay code.
+
+8. [ ] Strengthen automated testing around high-load scenarios and designer tooling.
+   - Status: Not started
+   - Observations: Test suite is rich but lacks stress/performance regression cases and editor-tool coverage.
+   - Approach: Add long-running transition queue tests, cancellation tests once implemented, and play-mode coverage for `StateGraphAsset` authoring plus diagnostics overlays.
+   - Impact: Improves confidence as the library grows and guards against regressions in critical orchestration flows.
+
+## Low Priority
+9. [ ] Offer bridges to complementary state paradigms (behaviour trees, GOAP, Animator) and richer sample content.
+   - Status: Not started
+   - Observations: README lists scenarios but no direct integration with Unity Animator, Playables, or third-party AI frameworks.
+   - Approach: Ship adapter states that sync Animator sub-state machines, expose behaviour-tree entry points, and expand Samples with end-to-end gameplay loops demonstrating the new tooling.
+   - Impact: Enhances usability for teams mixing paradigms, showcasing flexibility and lowering adoption friction.

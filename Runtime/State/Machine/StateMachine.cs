@@ -8,6 +8,7 @@ namespace WallstopStudios.DxState.State.Machine
     public sealed class StateMachine<T>
     {
         private readonly Dictionary<T, List<Transition<T>>> _states;
+        private readonly List<Transition<T>> _globalTransitions;
         private readonly Queue<PendingTransition> _pendingTransitions;
 
         private TransitionExecutionContext<T> _latestTransitionContext;
@@ -17,6 +18,12 @@ namespace WallstopStudios.DxState.State.Machine
         private int _transitionDepth;
 
         private T _currentState;
+        private IHierarchicalStateContext<T> _activeHierarchicalState;
+        private IReadOnlyList<IStateRegion> _activeRegions;
+        private IStateRegionCoordinator _activeRegionCoordinator;
+        private bool _shouldUpdateActiveRegions;
+        private T _previousState;
+        private bool _hasPreviousState;
 
         public StateMachine(IEnumerable<Transition<T>> transitions, T currentState)
         {
@@ -34,6 +41,7 @@ namespace WallstopStudios.DxState.State.Machine
             }
 
             _states = new Dictionary<T, List<Transition<T>>>();
+            _globalTransitions = new List<Transition<T>>();
             _pendingTransitions = new Queue<PendingTransition>();
             HashSet<T> discoveredStates = new HashSet<T>();
             HashSet<Transition<T>> uniqueTransitions = new HashSet<Transition<T>>();
@@ -48,7 +56,9 @@ namespace WallstopStudios.DxState.State.Machine
                     );
                 }
 
-                if (IsInvalidStateValue(transition.from))
+                bool isGlobal = transition.isGlobal;
+
+                if (!isGlobal && IsInvalidStateValue(transition.from))
                 {
                     throw new ArgumentException(
                         "Transition 'from' state must be a valid non-null instance.",
@@ -71,6 +81,19 @@ namespace WallstopStudios.DxState.State.Machine
                         "Duplicate transition instances are not allowed in the definition set.",
                         nameof(transitions)
                     );
+                }
+
+                if (isGlobal)
+                {
+                    _globalTransitions.Add(transition);
+                    discoveredStates.Add(transition.to);
+
+                    if (transition.to is IStateContext<T> globalToContext)
+                    {
+                        globalToContext.StateMachine = this;
+                    }
+
+                    continue;
                 }
 
                 List<Transition<T>> transitionsFromState = _states.GetOrAdd(transition.from);
@@ -117,8 +140,15 @@ namespace WallstopStudios.DxState.State.Machine
 
         public void Update()
         {
+            if (TryExecuteGlobalTransitions())
+            {
+                UpdateActiveRegions();
+                return;
+            }
+
             if (!_states.TryGetValue(_currentState, out List<Transition<T>> transitionsForCurrent))
             {
+                UpdateActiveRegions();
                 return;
             }
 
@@ -131,14 +161,34 @@ namespace WallstopStudios.DxState.State.Machine
                 }
 
                 TransitionToState(transition.to, transition);
+                UpdateActiveRegions();
                 return;
             }
+
+            UpdateActiveRegions();
         }
 
         public bool TryGetLastTransitionContext(out TransitionExecutionContext<T> context)
         {
             context = _latestTransitionContext;
             return _hasTransitionContext;
+        }
+
+        public bool TryGetPreviousState(out T state)
+        {
+            state = _previousState;
+            return _hasPreviousState;
+        }
+
+        public bool TryTransitionToPreviousState(TransitionContext context = default)
+        {
+            if (!_hasPreviousState)
+            {
+                return false;
+            }
+
+            ForceTransition(_previousState, context);
+            return true;
         }
 
         public void ForceTransition(T newState, TransitionContext context)
@@ -225,6 +275,11 @@ namespace WallstopStudios.DxState.State.Machine
 
                 TransitionContext contextToRecord = pending.Context;
 
+                if (_activeHierarchicalState != null)
+                {
+                    DeactivateActiveHierarchicalState(contextToRecord);
+                }
+
                 if (previousState is IStateContext<T> previousContext)
                 {
                     previousContext.Exit();
@@ -236,6 +291,9 @@ namespace WallstopStudios.DxState.State.Machine
                 {
                     targetContext.StateMachine = this;
                 }
+
+                _previousState = previousState;
+                _hasPreviousState = !IsInvalidStateValue(previousState);
 
                 _latestTransitionContext = new TransitionExecutionContext<T>(
                     previousState,
@@ -261,6 +319,15 @@ namespace WallstopStudios.DxState.State.Machine
                     }
 
                     newContext.Enter();
+                }
+
+                if (targetState is IHierarchicalStateContext<T> hierarchicalState)
+                {
+                    ActivateHierarchicalState(hierarchicalState, contextToRecord);
+                }
+                else
+                {
+                    ClearActiveHierarchicalState();
                 }
 
                 TransitionExecuted?.Invoke(_latestTransitionContext);
@@ -315,6 +382,100 @@ namespace WallstopStudios.DxState.State.Machine
             public Transition<T> Transition { get; }
 
             public TransitionContext Context { get; }
+        }
+
+        private bool TryExecuteGlobalTransitions()
+        {
+            if (_globalTransitions.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < _globalTransitions.Count; i++)
+            {
+                Transition<T> transition = _globalTransitions[i];
+                if (!transition.Evaluate())
+                {
+                    continue;
+                }
+
+                TransitionToState(transition.to, transition);
+                return true;
+            }
+
+            return false;
+        }
+
+        private void ActivateHierarchicalState(
+            IHierarchicalStateContext<T> hierarchicalState,
+            TransitionContext context
+        )
+        {
+            if (hierarchicalState == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<IStateRegion> regions = hierarchicalState.Regions;
+            _activeHierarchicalState = hierarchicalState;
+            _activeRegions = regions != null && regions.Count > 0 ? regions : null;
+            _shouldUpdateActiveRegions = hierarchicalState.ShouldUpdateRegions;
+            _activeRegionCoordinator = hierarchicalState.RegionCoordinator
+                ?? DefaultStateRegionCoordinator.Instance;
+
+            if (_activeRegions == null)
+            {
+                return;
+            }
+
+            _activeRegionCoordinator.ActivateRegions(_activeRegions, context);
+        }
+
+        private void DeactivateActiveHierarchicalState(TransitionContext context)
+        {
+            if (_activeHierarchicalState == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<IStateRegion> regions = _activeRegions;
+            if (regions != null)
+            {
+                IStateRegionCoordinator coordinator = _activeRegionCoordinator
+                    ?? DefaultStateRegionCoordinator.Instance;
+                coordinator.DeactivateRegions(regions, context);
+            }
+
+            _activeHierarchicalState = null;
+            _activeRegions = null;
+            _activeRegionCoordinator = null;
+            _shouldUpdateActiveRegions = false;
+        }
+
+        private void ClearActiveHierarchicalState()
+        {
+            _activeHierarchicalState = null;
+            _activeRegions = null;
+            _activeRegionCoordinator = null;
+            _shouldUpdateActiveRegions = false;
+        }
+
+        private void UpdateActiveRegions()
+        {
+            if (!_shouldUpdateActiveRegions)
+            {
+                return;
+            }
+
+            IReadOnlyList<IStateRegion> regions = _activeRegions;
+            if (regions == null)
+            {
+                return;
+            }
+
+            IStateRegionCoordinator coordinator = _activeRegionCoordinator
+                ?? DefaultStateRegionCoordinator.Instance;
+            coordinator.UpdateRegions(regions);
         }
     }
 }
