@@ -3,6 +3,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
     using System;
     using System.Collections.Generic;
     using System.Text;
+    using UnityEditor;
     using UnityEngine;
     using WallstopStudios.DxState.State.Stack.Diagnostics;
 
@@ -100,17 +101,21 @@ namespace WallstopStudios.DxState.State.Stack.Components
         {
             DrawSummaryBar();
 
-            OverlayTab newTab = (OverlayTab)GUILayout.Toolbar(
-                (int)_selectedTab,
-                new[] { "Stack", "Events", "Progress", "Metrics", "Timeline" }
-            );
+            OverlayTab newTab = (OverlayTab)
+                GUILayout.Toolbar(
+                    (int)_selectedTab,
+                    new[] { "Stack", "Events", "Progress", "Metrics", "Timeline" }
+                );
             if (newTab != _selectedTab)
             {
                 _selectedTab = newTab;
                 _scrollPosition = Vector2.zero;
             }
 
-            _scrollPosition = GUILayout.BeginScrollView(_scrollPosition, GUILayout.ExpandHeight(true));
+            _scrollPosition = GUILayout.BeginScrollView(
+                _scrollPosition,
+                GUILayout.ExpandHeight(true)
+            );
             switch (_selectedTab)
             {
                 case OverlayTab.Stack:
@@ -165,20 +170,13 @@ namespace WallstopStudios.DxState.State.Stack.Components
                 GUILayout.ExpandWidth(false)
             );
             float progress = Mathf.Clamp01(_stateStackManager.Progress);
-            GUILayout.Label(
-                $"Progress {progress:P0}",
-                GUILayout.ExpandWidth(false)
-            );
+            GUILayout.Label($"Progress {progress:P0}", GUILayout.ExpandWidth(false));
             GUILayout.FlexibleSpace();
             if (GUILayout.Button(_layoutMode.ToString(), GUILayout.Width(100f)))
             {
                 CycleLayout();
             }
-            bool newLock = GUILayout.Toggle(
-                _lockWindow,
-                "Lock",
-                GUILayout.Width(60f)
-            );
+            bool newLock = GUILayout.Toggle(_lockWindow, "Lock", GUILayout.Width(60f));
             if (newLock != _lockWindow)
             {
                 _lockWindow = newLock;
@@ -287,12 +285,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
                     );
                     break;
                 case OverlayLayout.CompactHud:
-                    newRect = new Rect(
-                        screenWidth * 0.5f - 160f,
-                        Margin,
-                        320f,
-                        120f
-                    );
+                    newRect = new Rect(screenWidth * 0.5f - 160f, Margin, 320f, 120f);
                     break;
             }
 
@@ -324,7 +317,9 @@ namespace WallstopStudios.DxState.State.Stack.Components
 
         private void DrawProgress()
         {
-            IReadOnlyDictionary<string, float> progress = _stateStackManager.Diagnostics.LatestProgress;
+            IReadOnlyDictionary<string, float> progress = _stateStackManager
+                .Diagnostics
+                .LatestProgress;
             if (progress.Count == 0)
             {
                 GUILayout.Label("No progress reported yet.");
@@ -339,15 +334,14 @@ namespace WallstopStudios.DxState.State.Stack.Components
 
         private void DrawTimeline()
         {
-            IReadOnlyList<StateStackDiagnosticEvent> events =
-                _stateStackManager.Diagnostics.Events;
+            IReadOnlyList<StateStackDiagnosticEvent> events = _stateStackManager.Diagnostics.Events;
             if (events.Count == 0)
             {
                 GUILayout.Label("No events recorded yet.");
                 return;
             }
 
-            Rect rect = GUILayoutUtility.GetRect(GUILayout.ExpandWidth(true), GUILayout.Height(80f));
+            Rect rect = GUILayoutUtility.GetRect(320f, 80f, GUILayout.ExpandWidth(true));
             if (Event.current.type == EventType.Repaint)
             {
                 DrawTimelineChart(rect, events);
@@ -385,7 +379,11 @@ namespace WallstopStudios.DxState.State.Stack.Components
             GUI.backgroundColor = new Color(0.2f, 0.6f, 0.9f);
             GUI.Box(fill, GUIContent.none);
             GUI.backgroundColor = Color.white;
-            GUI.Label(rect, $"{value:P0}", new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter });
+            GUI.Label(
+                rect,
+                $"{value:P0}",
+                new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter }
+            );
         }
 
         private static void DrawTimelineChart(
@@ -450,15 +448,17 @@ namespace WallstopStudios.DxState.State.Stack.Components
             builder.AppendLine($"Current: {FormatStateName(_stateStackManager.CurrentState)}");
             builder.AppendLine($"Previous: {FormatStateName(_stateStackManager.PreviousState)}");
             builder.AppendLine($"Stack Depth: {_stateStackManager.Stack.Count}");
-            builder.AppendLine($"Queue Depth: {_stateStackManager.Diagnostics.TransitionQueueDepth}");
+            builder.AppendLine(
+                $"Queue Depth: {_stateStackManager.Diagnostics.TransitionQueueDepth}"
+            );
             builder.AppendLine(
                 $"Deferred Pending/Lifetime: {_stateStackManager.Diagnostics.PendingDeferredTransitions}/{_stateStackManager.Diagnostics.LifetimeDeferredTransitions}"
             );
-            builder.AppendLine(
-                $"Progress: {Mathf.Clamp01(_stateStackManager.Progress):P0}"
-            );
+            builder.AppendLine($"Progress: {Mathf.Clamp01(_stateStackManager.Progress):P0}");
 
-            IReadOnlyDictionary<string, float> progress = _stateStackManager.Diagnostics.LatestProgress;
+            IReadOnlyDictionary<string, float> progress = _stateStackManager
+                .Diagnostics
+                .LatestProgress;
             if (progress.Count > 0)
             {
                 builder.AppendLine("Progress:");
