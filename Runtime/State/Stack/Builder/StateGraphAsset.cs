@@ -3,6 +3,7 @@ namespace WallstopStudios.DxState.State.Stack.Builder
     using System;
     using System.Collections.Generic;
     using UnityEngine;
+    using WallstopStudios.DxState.State.Machine;
 
     [CreateAssetMenu(
         fileName = "StateGraphAsset",
@@ -143,6 +144,12 @@ namespace WallstopStudios.DxState.State.Stack.Builder
             [SerializeField]
             private string _tooltip;
 
+            [SerializeField]
+            private TransitionCause _cause;
+
+            [SerializeField]
+            private TransitionFlags _flags;
+
             public int FromIndex => _fromIndex;
 
             public int ToIndex => _toIndex;
@@ -150,6 +157,10 @@ namespace WallstopStudios.DxState.State.Stack.Builder
             public string Label => _label;
 
             public string Tooltip => _tooltip;
+
+            public TransitionCause Cause => _cause;
+
+            public TransitionFlags Flags => _flags;
         }
     }
 }

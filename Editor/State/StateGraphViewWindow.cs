@@ -12,6 +12,7 @@ namespace WallstopStudios.DxState.Editor.State
     using WallstopStudios.DxState.State.Stack;
     using WallstopStudios.DxState.State.Stack.Builder;
     using WallstopStudios.DxState.State.Stack.Components;
+    using WallstopStudios.DxState.State.Machine;
     using WallstopStudios.DxState.State.Stack.Diagnostics;
 
     public sealed class StateGraphViewWindow : EditorWindow
@@ -22,6 +23,7 @@ namespace WallstopStudios.DxState.Editor.State
         private StateGraph _graph;
         private string _stackName;
         private StateStackManager _targetManager;
+        private List<StateGraphAsset.StateTransitionMetadata> _activeTransitions;
 
         private Toolbar _toolbar;
         private ObjectField _graphField;
@@ -40,6 +42,7 @@ namespace WallstopStudios.DxState.Editor.State
         private Editor _currentInspectorEditor;
         private UnityEngine.Object _currentInspectorTarget;
         private int _selectedTransitionIndex = -1;
+        private StateStackGraphView.StateEdge _selectedEdge;
 
         public static void Open(StateGraphAsset graphAsset, string stackName)
         {
@@ -199,8 +202,37 @@ namespace WallstopStudios.DxState.Editor.State
             _inspectorGuiContainer.MarkDirtyRepaint();
         }
 
+        private StateGraphAsset.StackDefinition ResolveStackDefinition(string stackName)
+        {
+            if (_graphAsset == null)
+            {
+                return null;
+            }
+
+            IReadOnlyList<StateGraphAsset.StackDefinition> stacks = _graphAsset.Stacks;
+            if (stacks == null || stacks.Count == 0)
+            {
+                return null;
+            }
+
+            if (!string.IsNullOrEmpty(stackName))
+            {
+                for (int i = 0; i < stacks.Count; i++)
+                {
+                    StateGraphAsset.StackDefinition definition = stacks[i];
+                    if (definition != null && string.Equals(definition.Name, stackName, StringComparison.Ordinal))
+                    {
+                        return definition;
+                    }
+                }
+            }
+
+            return stacks[0];
+        }
+
         private void HandleStateSelection(UnityEngine.Object stateObject)
         {
+            _selectedEdge = null;
             if (ReferenceEquals(_currentInspectorTarget, stateObject))
             {
                 return;
@@ -238,6 +270,7 @@ namespace WallstopStudios.DxState.Editor.State
 
         private void HandleTransitionSelection(StateStackGraphView.StateEdge edge)
         {
+            _selectedEdge = edge;
             if (edge == null || !edge.HasMetadata)
             {
                 _selectedTransitionIndex = -1;
@@ -322,8 +355,23 @@ namespace WallstopStudios.DxState.Editor.State
             _graphSerialized?.Update();
             SerializedProperty labelProperty = entry.FindPropertyRelative("_label");
             SerializedProperty tooltipProperty = entry.FindPropertyRelative("_tooltip");
+            TransitionCause priorCause = StateStackGraphView.GetTransitionCause(entry);
+            TransitionFlags priorFlags = StateStackGraphView.GetTransitionFlags(entry);
 
             EditorGUILayout.LabelField("Transition Metadata", EditorStyles.boldLabel);
+            if (_selectedEdge != null)
+            {
+                EditorGUILayout.LabelField(
+                    "From",
+                    _selectedEdge.From != null ? _selectedEdge.From.StateName : "<unknown>"
+                );
+                EditorGUILayout.LabelField(
+                    "To",
+                    _selectedEdge.To != null ? _selectedEdge.To.StateName : "<unknown>"
+                );
+                EditorGUILayout.Space(2f);
+            }
+
             EditorGUI.BeginChangeCheck();
             string newLabel = EditorGUILayout.TextField(
                 "Label",
@@ -332,6 +380,14 @@ namespace WallstopStudios.DxState.Editor.State
             string newTooltip = EditorGUILayout.TextField(
                 "Tooltip",
                 tooltipProperty != null ? tooltipProperty.stringValue : string.Empty
+            );
+            TransitionCause newCause = (TransitionCause)EditorGUILayout.EnumPopup(
+                "Cause",
+                priorCause
+            );
+            TransitionFlags newFlags = (TransitionFlags)EditorGUILayout.EnumFlagsField(
+                "Flags",
+                priorFlags
             );
             if (EditorGUI.EndChangeCheck())
             {
@@ -343,6 +399,18 @@ namespace WallstopStudios.DxState.Editor.State
                 if (tooltipProperty != null)
                 {
                     tooltipProperty.stringValue = newTooltip;
+                }
+
+                SerializedProperty causeProperty = entry.FindPropertyRelative("_cause");
+                if (causeProperty != null)
+                {
+                    causeProperty.intValue = (int)newCause;
+                }
+
+                SerializedProperty flagsProperty = entry.FindPropertyRelative("_flags");
+                if (flagsProperty != null)
+                {
+                    flagsProperty.intValue = (int)newFlags;
                 }
 
                 _graphSerialized?.ApplyModifiedProperties();
@@ -421,7 +489,14 @@ namespace WallstopStudios.DxState.Editor.State
             StateStackConfiguration configuration = ResolveConfiguration(_graph, _stackName);
             if (_graphView != null)
             {
-                _graphView.Populate(_graphSerialized, stackProperty, _graphAsset, configuration);
+                StateGraphAsset.StackDefinition stackDefinition = ResolveStackDefinition(_stackName);
+                _graphView.Populate(
+                    _graphSerialized,
+                    stackProperty,
+                    _graphAsset,
+                    configuration,
+                    stackDefinition?.Transitions
+                );
                 _graphView.ClearSelection();
             }
 
@@ -549,6 +624,7 @@ namespace WallstopStudios.DxState.Editor.State
             private readonly Dictionary<string, StateMetricsSnapshot> _metricsCache;
             private readonly Dictionary<string, StateMetricsAccumulator> _metricsAccumulators;
             private SerializedProperty _transitionsProperty;
+            private IReadOnlyList<StateGraphAsset.StateTransitionMetadata> _metadataFallback;
 
             public Action GraphModified { get; set; }
             public Action<UnityEngine.Object> StateSelected { get; set; }
@@ -564,6 +640,7 @@ namespace WallstopStudios.DxState.Editor.State
                 _metricsAccumulators = new Dictionary<string, StateMetricsAccumulator>(
                     StringComparer.Ordinal
                 );
+                _metadataFallback = Array.Empty<StateGraphAsset.StateTransitionMetadata>();
                 this.SetupZoom(ContentZoomer.DefaultMinScale, ContentZoomer.DefaultMaxScale);
                 this.AddManipulator(new ContentDragger());
                 this.AddManipulator(new SelectionDragger());
@@ -604,13 +681,15 @@ namespace WallstopStudios.DxState.Editor.State
                 SerializedObject serializedGraph,
                 SerializedProperty stackProperty,
                 StateGraphAsset graphAsset,
-                StateStackConfiguration configuration
+                StateStackConfiguration configuration,
+                IReadOnlyList<StateGraphAsset.StateTransitionMetadata> metadata = null
             )
             {
                 _serializedGraph = serializedGraph;
                 _stackProperty = stackProperty;
                 _graphAsset = graphAsset;
                 _configuration = configuration;
+                _metadataFallback = metadata ?? Array.Empty<StateGraphAsset.StateTransitionMetadata>();
                 _transitionsProperty =
                     stackProperty != null
                         ? stackProperty.FindPropertyRelative("_transitions")
@@ -674,6 +753,17 @@ namespace WallstopStudios.DxState.Editor.State
 
                 CreateEdges();
                 Highlight(_currentManager);
+            }
+
+            private void Repopulate()
+            {
+                Populate(
+                    _serializedGraph,
+                    _stackProperty,
+                    _graphAsset,
+                    _configuration,
+                    _metadataFallback
+                );
             }
 
             private void OnDragUpdated(DragUpdatedEvent evt)
@@ -847,7 +937,7 @@ namespace WallstopStudios.DxState.Editor.State
                     }
 
                     ApplySerializedChanges();
-                    Populate(_serializedGraph, _stackProperty, _graphAsset, _configuration);
+                    Repopulate();
                     Highlight(_currentManager);
                     return EventPropagation.Stop;
                 }
@@ -923,33 +1013,60 @@ namespace WallstopStudios.DxState.Editor.State
                 }
 
                 ApplySerializedChanges();
-                Populate(_serializedGraph, _stackProperty, _graphAsset, _configuration);
+                Repopulate();
                 Highlight(_currentManager);
             }
 
             private bool CreateEdgesFromMetadata()
             {
-                if (_transitionsProperty == null || _transitionsProperty.arraySize == 0)
+                bool created = false;
+
+                if (_transitionsProperty != null && _transitionsProperty.arraySize > 0)
+                {
+                    for (int i = 0; i < _transitionsProperty.arraySize; i++)
+                    {
+                        SerializedProperty entry = _transitionsProperty.GetArrayElementAtIndex(i);
+                        int fromIndex = SafeGetInt(entry, "_fromIndex");
+                        int toIndex = SafeGetInt(entry, "_toIndex");
+                        StateNode fromNode = FindNodeByIndex(fromIndex);
+                        StateNode toNode = FindNodeByIndex(toIndex);
+                        if (fromNode == null || toNode == null)
+                        {
+                            continue;
+                        }
+
+                        StateEdge edge = ConnectNodes(fromNode, toNode);
+                        edge.MetadataIndex = i;
+                        ApplyEdgeMetadata(edge, i);
+                        created = true;
+                    }
+
+                    return created;
+                }
+
+                if (_metadataFallback == null || _metadataFallback.Count == 0)
                 {
                     return false;
                 }
 
-                bool created = false;
-                for (int i = 0; i < _transitionsProperty.arraySize; i++)
+                for (int i = 0; i < _metadataFallback.Count; i++)
                 {
-                    SerializedProperty entry = _transitionsProperty.GetArrayElementAtIndex(i);
-                    int fromIndex = SafeGetInt(entry, "_fromIndex");
-                    int toIndex = SafeGetInt(entry, "_toIndex");
-                    StateNode fromNode = FindNodeByIndex(fromIndex);
-                    StateNode toNode = FindNodeByIndex(toIndex);
+                    StateGraphAsset.StateTransitionMetadata metadata = _metadataFallback[i];
+                    StateNode fromNode = FindNodeByIndex(metadata.FromIndex);
+                    StateNode toNode = FindNodeByIndex(metadata.ToIndex);
                     if (fromNode == null || toNode == null)
                     {
                         continue;
                     }
 
                     StateEdge edge = ConnectNodes(fromNode, toNode);
-                    edge.MetadataIndex = i;
-                    ApplyEdgeMetadata(edge, i);
+                    edge.MetadataIndex = -1;
+                    edge.ApplyMetadata(
+                        metadata.Label,
+                        metadata.Tooltip,
+                        metadata.Cause,
+                        metadata.Flags
+                    );
                     created = true;
                 }
 
@@ -984,21 +1101,40 @@ namespace WallstopStudios.DxState.Editor.State
             private void ApplyEdgeMetadata(StateEdge edge, int metadataIndex)
             {
                 if (
-                    _transitionsProperty == null
-                    || metadataIndex < 0
-                    || metadataIndex >= _transitionsProperty.arraySize
+                    _transitionsProperty != null
+                    && metadataIndex >= 0
+                    && metadataIndex < _transitionsProperty.arraySize
                 )
                 {
-                    edge.ClearMetadata();
+                    SerializedProperty entry = _transitionsProperty.GetArrayElementAtIndex(
+                        metadataIndex
+                    );
+                    string label = SafeGetString(entry, "_label");
+                    string tooltip = SafeGetString(entry, "_tooltip");
+                    TransitionCause cause = GetTransitionCause(entry);
+                    TransitionFlags flags = GetTransitionFlags(entry);
+                    edge.ApplyMetadata(label, tooltip, cause, flags);
                     return;
                 }
 
-                SerializedProperty entry = _transitionsProperty.GetArrayElementAtIndex(
-                    metadataIndex
-                );
-                string label = SafeGetString(entry, "_label");
-                string tooltip = SafeGetString(entry, "_tooltip");
-                edge.ApplyMetadata(label, tooltip);
+                if (
+                    _metadataFallback != null
+                    && metadataIndex >= 0
+                    && metadataIndex < _metadataFallback.Count
+                )
+                {
+                    StateGraphAsset.StateTransitionMetadata metadata =
+                        _metadataFallback[metadataIndex];
+                    edge.ApplyMetadata(
+                        metadata.Label,
+                        metadata.Tooltip,
+                        metadata.Cause,
+                        metadata.Flags
+                    );
+                    return;
+                }
+
+                edge.ClearMetadata();
             }
 
             private void RemoveTransitions(List<StateEdge> edgesToRemove)
@@ -1028,7 +1164,7 @@ namespace WallstopStudios.DxState.Editor.State
                 }
 
                 ApplySerializedChanges();
-                Populate(_serializedGraph, _stackProperty, _graphAsset, _configuration);
+                Repopulate();
                 Highlight(_currentManager);
             }
 
@@ -1067,6 +1203,16 @@ namespace WallstopStudios.DxState.Editor.State
                     entry.FindPropertyRelative("_toIndex").intValue = toIndex;
                     entry.FindPropertyRelative("_label").stringValue = string.Empty;
                     entry.FindPropertyRelative("_tooltip").stringValue = string.Empty;
+                    SerializedProperty causeProperty = entry.FindPropertyRelative("_cause");
+                    if (causeProperty != null)
+                    {
+                        causeProperty.intValue = (int)TransitionCause.Unspecified;
+                    }
+                    SerializedProperty flagsProperty = entry.FindPropertyRelative("_flags");
+                    if (flagsProperty != null)
+                    {
+                        flagsProperty.intValue = (int)TransitionFlags.None;
+                    }
                     addedMetadata = true;
                     RemoveElement(edge);
                 }
@@ -1074,7 +1220,7 @@ namespace WallstopStudios.DxState.Editor.State
                 if (addedMetadata)
                 {
                     ApplySerializedChanges();
-                    Populate(_serializedGraph, _stackProperty, _graphAsset, _configuration);
+                    Repopulate();
                     Highlight(_currentManager);
                 }
             }
@@ -1113,7 +1259,7 @@ namespace WallstopStudios.DxState.Editor.State
                 {
                     ApplySerializedChanges();
                     UpdateTransitionsAfterRemoval(index);
-                    Populate(_serializedGraph, _stackProperty, _graphAsset, _configuration);
+                    Repopulate();
                     Highlight(_currentManager);
                 }
             }
@@ -1127,7 +1273,7 @@ namespace WallstopStudios.DxState.Editor.State
                 }
 
                 ApplySerializedChanges();
-                Populate(_serializedGraph, _stackProperty, _graphAsset, _configuration);
+                Repopulate();
                 Highlight(_currentManager);
             }
 
@@ -1184,7 +1330,7 @@ namespace WallstopStudios.DxState.Editor.State
 
                 ApplySerializedChanges();
                 RemapTransitions(remap);
-                Populate(_serializedGraph, _stackProperty, _graphAsset, _configuration);
+                Repopulate();
                 Highlight(_currentManager);
             }
 
@@ -1574,6 +1720,22 @@ namespace WallstopStudios.DxState.Editor.State
                 return relative != null ? relative.stringValue : string.Empty;
             }
 
+            private static TransitionCause GetTransitionCause(SerializedProperty property)
+            {
+                SerializedProperty relative = property.FindPropertyRelative("_cause");
+                return relative != null
+                    ? (TransitionCause)relative.intValue
+                    : TransitionCause.Unspecified;
+            }
+
+            private static TransitionFlags GetTransitionFlags(SerializedProperty property)
+            {
+                SerializedProperty relative = property.FindPropertyRelative("_flags");
+                return relative != null
+                    ? (TransitionFlags)relative.intValue
+                    : TransitionFlags.None;
+            }
+
             private void UpdateMetrics(StateStackDiagnostics diagnostics)
             {
                 _metricsAccumulators.Clear();
@@ -1819,16 +1981,29 @@ namespace WallstopStudios.DxState.Editor.State
                     _owner.NotifySelectionChange();
                 }
 
-                public void ApplyMetadata(string label, string tooltip)
+                public void ApplyMetadata(
+                    string label,
+                    string tooltip,
+                    TransitionCause cause,
+                    TransitionFlags flags
+                )
                 {
-                    _label.text = string.IsNullOrWhiteSpace(label) ? "<transition>" : label;
-                    this.tooltip = string.IsNullOrEmpty(tooltip) ? null : tooltip;
+                    string displayLabel = !string.IsNullOrWhiteSpace(label)
+                        ? label
+                        : (cause != TransitionCause.Unspecified ? cause.ToString() : "<transition>");
+                    _label.text = displayLabel;
+                    string resolvedTooltip = tooltip;
+                    if (string.IsNullOrWhiteSpace(resolvedTooltip))
+                    {
+                        resolvedTooltip = BuildTooltip(cause, flags);
+                    }
+
+                    this.tooltip = string.IsNullOrWhiteSpace(resolvedTooltip) ? null : resolvedTooltip;
                 }
 
                 public void ClearMetadata()
                 {
-                    _label.text = string.Empty;
-                    tooltip = null;
+                    ApplyMetadata(string.Empty, string.Empty, TransitionCause.Unspecified, TransitionFlags.None);
                 }
 
                 public void RefreshAppearance(bool isActive)
@@ -1844,6 +2019,23 @@ namespace WallstopStudios.DxState.Editor.State
                     edgeControl.inputColor = color;
                     edgeControl.outputColor = color;
                     edgeControl.MarkDirtyRepaint();
+                }
+
+                private static string BuildTooltip(TransitionCause cause, TransitionFlags flags)
+                {
+                    bool hasCause = cause != TransitionCause.Unspecified;
+                    bool hasFlags = flags != TransitionFlags.None;
+                    if (!hasCause && !hasFlags)
+                    {
+                        return string.Empty;
+                    }
+
+                    if (hasCause && hasFlags)
+                    {
+                        return $"Cause: {cause}\nFlags: {flags}";
+                    }
+
+                    return hasCause ? $"Cause: {cause}" : $"Flags: {flags}";
                 }
             }
         }
