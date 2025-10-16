@@ -4,14 +4,17 @@ namespace WallstopStudios.DxState.Editor.State
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Text;
     using UnityEditor;
     using UnityEditor.Experimental.GraphView;
     using UnityEditor.UIElements;
     using UnityEngine;
     using UnityEngine.UIElements;
+    using WallstopStudios.DxState.Editor.State.Validation;
     using WallstopStudios.DxState.State.Machine;
     using WallstopStudios.DxState.State.Stack;
     using WallstopStudios.DxState.State.Stack.Builder;
+    using WallstopStudios.DxState.State.Stack.Builder.Templates;
     using WallstopStudios.DxState.State.Stack.Components;
     using WallstopStudios.DxState.State.Stack.Diagnostics;
 
@@ -31,6 +34,7 @@ namespace WallstopStudios.DxState.Editor.State
         private ObjectField _managerField;
         private Button _refreshButton;
         private Button _syncButton;
+        private Button _validateButton;
         private Label _statusLabel;
 
         private readonly List<string> _stackOptions = new List<string>();
@@ -43,6 +47,7 @@ namespace WallstopStudios.DxState.Editor.State
         private UnityEngine.Object _currentInspectorTarget;
         private int _selectedTransitionIndex = -1;
         private StateStackGraphView.StateEdge _selectedEdge;
+        private StateGraphValidationReport _latestValidationReport;
 
         public static void Open(StateGraphAsset graphAsset, string stackName)
         {
@@ -149,6 +154,9 @@ namespace WallstopStudios.DxState.Editor.State
             _syncButton = new Button(HighlightGraph) { text = "Sync Active" };
             _toolbar.Add(_syncButton);
 
+            _validateButton = new Button(RunValidation) { text = "Validate" };
+            _toolbar.Add(_validateButton);
+
             _statusLabel = new Label();
             _toolbar.Add(_statusLabel);
 
@@ -170,6 +178,7 @@ namespace WallstopStudios.DxState.Editor.State
             };
             _graphView.StateSelected = HandleStateSelection;
             _graphView.TransitionSelected = HandleTransitionSelection;
+            _graphView.TemplateApplied = HandleTemplateApplied;
             _graphView.StretchToParentSize();
             _contentSplitView.Add(_graphView);
 
@@ -301,6 +310,27 @@ namespace WallstopStudios.DxState.Editor.State
             {
                 _inspectorGuiContainer.MarkDirtyRepaint();
             }
+        }
+
+        private void HandleTemplateApplied(
+            StateGraphTemplateApplier.TemplateApplicationResult result
+        )
+        {
+            if (!string.IsNullOrEmpty(result.StackName))
+            {
+                _stackName = result.StackName;
+            }
+
+            RefreshGraphData(repopulate: true);
+            HighlightGraph();
+
+            if (_statusLabel != null && !string.IsNullOrEmpty(result.StackName))
+            {
+                _statusLabel.text = $"Template added: {result.StackName}";
+            }
+
+            _latestValidationReport = null;
+            ApplyValidationToGraph();
         }
 
         private void DisposeInspectorEditor()
@@ -446,6 +476,8 @@ namespace WallstopStudios.DxState.Editor.State
             {
                 PopulateGraphView();
             }
+
+            ApplyValidationToGraph();
         }
 
         private void UpdateStackOptions()
@@ -503,6 +535,8 @@ namespace WallstopStudios.DxState.Editor.State
 
             HandleStateSelection(null);
             HandleTransitionSelection(null);
+
+            ApplyValidationToGraph();
         }
 
         private SerializedProperty FindStackProperty(string stackName)
@@ -579,6 +613,66 @@ namespace WallstopStudios.DxState.Editor.State
             return null;
         }
 
+        private void RunValidation()
+        {
+            if (_graphAsset == null)
+            {
+                _statusLabel.text = "Select a graph to validate.";
+                return;
+            }
+
+            _latestValidationReport = StateGraphValidator.Validate(_graphAsset);
+            StateGraphValidator.LogReport(_graphAsset, _latestValidationReport);
+            ApplyValidationToGraph();
+            UpdateStatusLabel();
+        }
+
+        private void ApplyValidationToGraph()
+        {
+            if (_graphView == null)
+            {
+                return;
+            }
+
+            if (_latestValidationReport == null)
+            {
+                _graphView.ClearValidationState();
+                return;
+            }
+
+            int stackIndex = ResolveStackIndex(_stackName);
+            _graphView.ApplyValidationReport(_latestValidationReport, stackIndex);
+        }
+
+        private int ResolveStackIndex(string stackName)
+        {
+            if (_stacksProperty == null)
+            {
+                return -1;
+            }
+
+            if (!string.IsNullOrEmpty(stackName))
+            {
+                for (int i = 0; i < _stacksProperty.arraySize; i++)
+                {
+                    SerializedProperty stackProperty = _stacksProperty.GetArrayElementAtIndex(i);
+                    SerializedProperty nameProperty = stackProperty.FindPropertyRelative("_name");
+                    string name = nameProperty != null ? nameProperty.stringValue : null;
+                    if (string.Equals(name, stackName, StringComparison.Ordinal))
+                    {
+                        return i;
+                    }
+                }
+            }
+
+            if (_stacksProperty.arraySize > 0)
+            {
+                return 0;
+            }
+
+            return -1;
+        }
+
         private void HighlightGraph()
         {
             _graphView?.Highlight(_targetManager);
@@ -594,7 +688,14 @@ namespace WallstopStudios.DxState.Editor.State
 
             string stackLabel = string.IsNullOrEmpty(_stackName) ? "<default>" : _stackName;
             string managerLabel = _targetManager != null ? _targetManager.name : "<none>";
-            _statusLabel.text = $"Stack: {stackLabel} | Manager: {managerLabel}";
+            string validationLabel = string.Empty;
+            if (_latestValidationReport != null)
+            {
+                validationLabel =
+                    $" | Validation: {_latestValidationReport.ErrorCount}E {_latestValidationReport.WarningCount}W";
+            }
+
+            _statusLabel.text = $"Stack: {stackLabel} | Manager: {managerLabel}{validationLabel}";
         }
 
         private void OnEditorUpdate()
@@ -628,6 +729,7 @@ namespace WallstopStudios.DxState.Editor.State
             private IReadOnlyList<StateGraphAsset.StateTransitionMetadata> _metadataFallback;
 
             public Action GraphModified { get; set; }
+            public Action<StateGraphTemplateApplier.TemplateApplicationResult> TemplateApplied { get; set; }
             public Action<UnityEngine.Object> StateSelected { get; set; }
             public Action<StateEdge> TransitionSelected { get; set; }
 
@@ -676,6 +778,7 @@ namespace WallstopStudios.DxState.Editor.State
                 TransitionSelected?.Invoke(null);
                 StateSelected = null;
                 TransitionSelected = null;
+                TemplateApplied = null;
             }
 
             public void Populate(
@@ -686,6 +789,7 @@ namespace WallstopStudios.DxState.Editor.State
                 IReadOnlyList<StateGraphAsset.StateTransitionMetadata> metadata = null
             )
             {
+                ClearValidationState();
                 _serializedGraph = serializedGraph;
                 _stackProperty = stackProperty;
                 _graphAsset = graphAsset;
@@ -757,6 +861,19 @@ namespace WallstopStudios.DxState.Editor.State
                 Highlight(_currentManager);
             }
 
+            public void ClearValidationState()
+            {
+                for (int i = 0; i < _nodes.Count; i++)
+                {
+                    _nodes[i].SetValidation(null, string.Empty);
+                }
+
+                for (int i = 0; i < _edges.Count; i++)
+                {
+                    _edges[i].SetValidation(null, string.Empty);
+                }
+            }
+
             private void Repopulate()
             {
                 Populate(
@@ -766,6 +883,102 @@ namespace WallstopStudios.DxState.Editor.State
                     _configuration,
                     _metadataFallback
                 );
+            }
+
+            public void ApplyValidationReport(
+                StateGraphValidationReport report,
+                int stackIndex
+            )
+            {
+                ClearValidationState();
+                if (report == null)
+                {
+                    return;
+                }
+
+                if (stackIndex < 0)
+                {
+                    return;
+                }
+
+                IReadOnlyList<StateGraphValidationIssue> issues = report.Issues;
+                if (issues == null || issues.Count == 0)
+                {
+                    return;
+                }
+
+                Dictionary<int, List<StateGraphValidationIssue>> stateIssues =
+                    new Dictionary<int, List<StateGraphValidationIssue>>();
+                Dictionary<int, List<StateGraphValidationIssue>> transitionIssues =
+                    new Dictionary<int, List<StateGraphValidationIssue>>();
+
+                for (int i = 0; i < issues.Count; i++)
+                {
+                    StateGraphValidationIssue issue = issues[i];
+                    if (issue.StackIndex != stackIndex)
+                    {
+                        continue;
+                    }
+
+                    if (issue.TargetsState)
+                    {
+                        if (!stateIssues.TryGetValue(issue.StateIndex, out List<StateGraphValidationIssue> list))
+                        {
+                            list = new List<StateGraphValidationIssue>();
+                            stateIssues[issue.StateIndex] = list;
+                        }
+                        list.Add(issue);
+                    }
+                    else if (issue.TargetsTransition)
+                    {
+                        if (
+                            !transitionIssues.TryGetValue(
+                                issue.TransitionIndex,
+                                out List<StateGraphValidationIssue> transitions
+                            )
+                        )
+                        {
+                            transitions = new List<StateGraphValidationIssue>();
+                            transitionIssues[issue.TransitionIndex] = transitions;
+                        }
+                        transitions.Add(issue);
+                    }
+                }
+
+                foreach (KeyValuePair<int, List<StateGraphValidationIssue>> entry in stateIssues)
+                {
+                    int index = entry.Key;
+                    if (index < 0 || index >= _nodes.Count)
+                    {
+                        continue;
+                    }
+
+                    StateNode node = _nodes[index];
+                    List<StateGraphValidationIssue> nodeIssueList = entry.Value;
+                    StateGraphValidationSeverity severity = DetermineSeverity(nodeIssueList);
+                    string message = BuildValidationMessage(nodeIssueList);
+                    node.SetValidation(severity, message);
+                }
+
+                foreach (KeyValuePair<int, List<StateGraphValidationIssue>> entry in transitionIssues)
+                {
+                    int index = entry.Key;
+                    if (index < 0)
+                    {
+                        continue;
+                    }
+
+                    StateEdge edge = FindEdgeByMetadataIndex(index);
+                    if (edge == null)
+                    {
+                        continue;
+                    }
+
+                    List<StateGraphValidationIssue> edgeIssueList = entry.Value;
+                    StateGraphValidationSeverity severity = DetermineSeverity(edgeIssueList);
+                    string message = BuildValidationMessage(edgeIssueList);
+                    edge.SetValidation(severity, message);
+                }
             }
 
             private void OnDragUpdated(DragUpdatedEvent evt)
@@ -926,6 +1139,85 @@ namespace WallstopStudios.DxState.Editor.State
                     _ => AddStateReference(selected as UnityEngine.Object),
                     status
                 );
+
+                IReadOnlyList<StateGraphTemplate> templates = StateGraphTemplateCache.GetTemplates();
+                if (templates.Count > 0)
+                {
+                    evt.menu.AppendSeparator();
+                    DropdownMenuAction.Status templateStatus =
+                        _graphAsset != null
+                            ? DropdownMenuAction.Status.Normal
+                            : DropdownMenuAction.Status.Disabled;
+
+                    for (int i = 0; i < templates.Count; i++)
+                    {
+                        StateGraphTemplate template = templates[i];
+                        string categoryPath = ResolveTemplateCategoryPath(template.Category);
+                        string menuLabel = string.IsNullOrEmpty(categoryPath)
+                            ? $"Add Template/{template.DisplayName}"
+                            : $"Add Template/{categoryPath}/{template.DisplayName}";
+
+                        evt.menu.AppendAction(
+                            menuLabel,
+                            _ => ApplyTemplate(template),
+                            _ => templateStatus,
+                            template.Description
+                        );
+                    }
+
+                    evt.menu.AppendAction(
+                        "Add Template/Refresh List",
+                        _ => StateGraphTemplateCache.Refresh(),
+                        DropdownMenuAction.Status.Normal
+                    );
+                }
+            }
+
+            private static string ResolveTemplateCategoryPath(
+                StateGraphTemplate.TemplateCategory category
+            )
+            {
+                switch (category)
+                {
+                    case StateGraphTemplate.TemplateCategory.Hierarchical:
+                        return "Hierarchical";
+                    case StateGraphTemplate.TemplateCategory.Trigger:
+                        return "Trigger";
+                    default:
+                        return string.Empty;
+                }
+            }
+
+            private void ApplyTemplate(StateGraphTemplate template)
+            {
+                if (template == null || _graphAsset == null)
+                {
+                    return;
+                }
+
+                StateGraphTemplateApplier.TemplateApplicationResult result =
+                    StateGraphTemplateApplier.ApplyTemplate(template, _graphAsset);
+
+                SerializedObject serializedGraph = new SerializedObject(_graphAsset);
+                SerializedProperty stacksProperty = serializedGraph.FindProperty("_stacks");
+                SerializedProperty stackProperty = null;
+                if (
+                    stacksProperty != null
+                    && 0 <= result.StackIndex
+                    && result.StackIndex < stacksProperty.arraySize
+                )
+                {
+                    stackProperty = stacksProperty.GetArrayElementAtIndex(result.StackIndex);
+                }
+
+                _serializedGraph = serializedGraph;
+                _stackProperty = stackProperty;
+                _configuration = null;
+                _metadataFallback = Array.Empty<StateGraphAsset.StateTransitionMetadata>();
+                Repopulate();
+                Highlight(_currentManager);
+                GraphModified?.Invoke();
+                TemplateApplied?.Invoke(result);
             }
 
             public override EventPropagation DeleteSelection()
@@ -1353,6 +1645,7 @@ namespace WallstopStudios.DxState.Editor.State
                 private readonly StateStackGraphView _owner;
                 private readonly Label _descriptionLabel;
                 private readonly Label _metricsLabel;
+                private readonly Label _validationLabel;
                 private readonly Color _baseColor;
                 private readonly Color _initialColor = new Color(0.2f, 0.5f, 0.3f, 1f);
                 private readonly Color _missingColor = new Color(0.6f, 0.2f, 0.2f, 1f);
@@ -1405,6 +1698,14 @@ namespace WallstopStudios.DxState.Editor.State
                     _metricsLabel.style.whiteSpace = WhiteSpace.Normal;
                     _metricsLabel.style.color = new Color(0.82f, 0.82f, 0.82f, 1f);
                     mainContainer.Add(_metricsLabel);
+
+                    _validationLabel = new Label();
+                    _validationLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+                    _validationLabel.style.fontSize = 10;
+                    _validationLabel.style.whiteSpace = WhiteSpace.Normal;
+                    _validationLabel.style.marginTop = 2f;
+                    _validationLabel.style.display = DisplayStyle.None;
+                    mainContainer.Add(_validationLabel);
 
                     Input = InstantiatePort(
                         Orientation.Horizontal,
@@ -1473,6 +1774,12 @@ namespace WallstopStudios.DxState.Editor.State
                         return _missingColor;
                     }
 
+                    StateGraphPlaceholderState placeholder = StateObject as StateGraphPlaceholderState;
+                    if (placeholder != null)
+                    {
+                        return placeholder.AccentColor;
+                    }
+
                     return IsInitial ? _initialColor : _baseColor;
                 }
 
@@ -1487,13 +1794,32 @@ namespace WallstopStudios.DxState.Editor.State
                     }
                     else
                     {
-                        string description =
-                            ResolvedState != null
-                                ? ResolvedState.GetType().Name
-                                : StateObject.GetType().Name;
-                        _descriptionLabel.text = description;
-                        _descriptionLabel.style.color = Color.white;
-                        _metricsLabel.text = string.Empty;
+                        StateGraphPlaceholderState placeholder =
+                            StateObject as StateGraphPlaceholderState;
+                        if (placeholder != null)
+                        {
+                            string kindLabel = placeholder.TemplateKind.ToString();
+                            _descriptionLabel.text = $"{kindLabel} Template";
+                            _descriptionLabel.style.color = Color.white;
+                            if (!string.IsNullOrWhiteSpace(placeholder.Notes))
+                            {
+                                _metricsLabel.text = placeholder.Notes;
+                            }
+                            else
+                            {
+                                _metricsLabel.text = "Placeholder state";
+                            }
+                        }
+                        else
+                        {
+                            string description =
+                                ResolvedState != null
+                                    ? ResolvedState.GetType().Name
+                                    : StateObject.GetType().Name;
+                            _descriptionLabel.text = description;
+                            _descriptionLabel.style.color = Color.white;
+                            _metricsLabel.text = string.Empty;
+                        }
                     }
                 }
 
@@ -1542,6 +1868,23 @@ namespace WallstopStudios.DxState.Editor.State
                     }
                 }
 
+                public void SetValidation(
+                    StateGraphValidationSeverity? severity,
+                    string message
+                )
+                {
+                    if (!severity.HasValue)
+                    {
+                        _validationLabel.text = string.Empty;
+                        _validationLabel.style.display = DisplayStyle.None;
+                        return;
+                    }
+
+                    _validationLabel.text = message;
+                    _validationLabel.style.color = ResolveValidationColor(severity.Value);
+                    _validationLabel.style.display = DisplayStyle.Flex;
+                }
+
                 public bool MatchesState(IState state)
                 {
                     if (state == null)
@@ -1573,6 +1916,19 @@ namespace WallstopStudios.DxState.Editor.State
                     }
 
                     return resolvedState != null ? resolvedState.Name : string.Empty;
+                }
+
+                private static Color ResolveValidationColor(StateGraphValidationSeverity severity)
+                {
+                    switch (severity)
+                    {
+                        case StateGraphValidationSeverity.Error:
+                            return new Color(0.85f, 0.25f, 0.25f, 1f);
+                        case StateGraphValidationSeverity.Warning:
+                            return new Color(0.95f, 0.75f, 0.22f, 1f);
+                        default:
+                            return new Color(0.45f, 0.65f, 1f, 1f);
+                    }
                 }
             }
 
@@ -1904,6 +2260,58 @@ namespace WallstopStudios.DxState.Editor.State
                 }
             }
 
+            private StateEdge FindEdgeByMetadataIndex(int metadataIndex)
+            {
+                for (int i = 0; i < _edges.Count; i++)
+                {
+                    StateEdge candidate = _edges[i];
+                    if (candidate.MetadataIndex == metadataIndex)
+                    {
+                        return candidate;
+                    }
+                }
+
+                return null;
+            }
+
+            private static StateGraphValidationSeverity DetermineSeverity(
+                IReadOnlyList<StateGraphValidationIssue> issues
+            )
+            {
+                StateGraphValidationSeverity highest = StateGraphValidationSeverity.Info;
+                for (int i = 0; i < issues.Count; i++)
+                {
+                    StateGraphValidationIssue issue = issues[i];
+                    if (issue.Severity > highest)
+                    {
+                        highest = issue.Severity;
+                    }
+                }
+
+                return highest;
+            }
+
+            private static string BuildValidationMessage(
+                IReadOnlyList<StateGraphValidationIssue> issues
+            )
+            {
+                StringBuilder builder = new StringBuilder();
+                for (int i = 0; i < issues.Count; i++)
+                {
+                    StateGraphValidationIssue issue = issues[i];
+                    if (builder.Length > 0)
+                    {
+                        builder.Append('\n');
+                    }
+
+                    builder.Append(issue.Severity);
+                    builder.Append(": ");
+                    builder.Append(issue.Message);
+                }
+
+                return builder.ToString();
+            }
+
             private sealed class StateMetricsAccumulator
             {
                 public int TransitionCount;
@@ -1937,9 +2345,14 @@ namespace WallstopStudios.DxState.Editor.State
             {
                 private static readonly Color ActiveColor = new Color(0.3f, 0.85f, 1f, 1f);
                 private static readonly Color IdleColor = new Color(0.25f, 0.25f, 0.25f, 0.85f);
+                private static readonly Color DefaultLabelColor = new Color(0f, 0f, 0f, 0.6f);
+                private static readonly Color ErrorLabelColor = new Color(0.62f, 0.16f, 0.16f, 0.9f);
+                private static readonly Color WarningLabelColor = new Color(0.78f, 0.59f, 0.16f, 0.9f);
+                private static readonly Color InfoLabelColor = new Color(0.18f, 0.45f, 0.9f, 0.9f);
 
                 private readonly StateStackGraphView _owner;
                 private readonly Label _label;
+                private string _baseTooltip;
 
                 public StateEdge(StateStackGraphView owner, StateNode from, StateNode to)
                 {
@@ -1955,13 +2368,14 @@ namespace WallstopStudios.DxState.Editor.State
                     _label.style.paddingRight = 4f;
                     _label.style.paddingTop = 2f;
                     _label.style.paddingBottom = 2f;
-                    _label.style.backgroundColor = new Color(0f, 0f, 0f, 0.6f);
+                    _label.style.backgroundColor = DefaultLabelColor;
                     _label.style.color = Color.white;
                     _label.style.borderTopLeftRadius = 4f;
                     _label.style.borderTopRightRadius = 4f;
                     _label.style.borderBottomLeftRadius = 4f;
                     _label.style.borderBottomRightRadius = 4f;
                     Add(_label);
+                    _baseTooltip = string.Empty;
                 }
 
                 public StateNode From { get; }
@@ -2001,9 +2415,10 @@ namespace WallstopStudios.DxState.Editor.State
                         resolvedTooltip = BuildTooltip(cause, flags);
                     }
 
-                    this.tooltip = string.IsNullOrWhiteSpace(resolvedTooltip)
-                        ? null
+                    _baseTooltip = string.IsNullOrWhiteSpace(resolvedTooltip)
+                        ? string.Empty
                         : resolvedTooltip;
+                    this.tooltip = string.IsNullOrEmpty(_baseTooltip) ? null : _baseTooltip;
                 }
 
                 public void ClearMetadata()
@@ -2031,6 +2446,33 @@ namespace WallstopStudios.DxState.Editor.State
                     edgeControl.MarkDirtyRepaint();
                 }
 
+                public void SetValidation(
+                    StateGraphValidationSeverity? severity,
+                    string message
+                )
+                {
+                    if (!severity.HasValue)
+                    {
+                        _label.style.backgroundColor = DefaultLabelColor;
+                        this.tooltip = string.IsNullOrEmpty(_baseTooltip) ? null : _baseTooltip;
+                        return;
+                    }
+
+                    _label.style.backgroundColor = ResolveLabelColor(severity.Value);
+                    if (string.IsNullOrEmpty(message))
+                    {
+                        this.tooltip = string.IsNullOrEmpty(_baseTooltip) ? null : _baseTooltip;
+                    }
+                    else if (string.IsNullOrEmpty(_baseTooltip))
+                    {
+                        this.tooltip = message;
+                    }
+                    else
+                    {
+                        this.tooltip = message + "\n" + _baseTooltip;
+                    }
+                }
+
                 private static string BuildTooltip(TransitionCause cause, TransitionFlags flags)
                 {
                     bool hasCause = cause != TransitionCause.Unspecified;
@@ -2046,6 +2488,19 @@ namespace WallstopStudios.DxState.Editor.State
                     }
 
                     return hasCause ? $"Cause: {cause}" : $"Flags: {flags}";
+                }
+
+                private static Color ResolveLabelColor(StateGraphValidationSeverity severity)
+                {
+                    switch (severity)
+                    {
+                        case StateGraphValidationSeverity.Error:
+                            return ErrorLabelColor;
+                        case StateGraphValidationSeverity.Warning:
+                            return WarningLabelColor;
+                        default:
+                            return InfoLabelColor;
+                    }
                 }
             }
         }

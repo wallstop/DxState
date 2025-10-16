@@ -10,6 +10,7 @@ namespace WallstopStudios.DxState.State.Machine
         private readonly Dictionary<T, List<Transition<T>>> _states;
         private readonly List<Transition<T>> _globalTransitions;
         private readonly Queue<PendingTransition> _pendingTransitions;
+        private readonly TransitionHistoryBuffer _transitionHistory;
 
         private TransitionExecutionContext<T> _latestTransitionContext;
 
@@ -24,6 +25,8 @@ namespace WallstopStudios.DxState.State.Machine
         private bool _shouldUpdateActiveRegions;
         private T _previousState;
         private bool _hasPreviousState;
+
+        private const int DefaultTransitionHistoryCapacity = 32;
 
         public StateMachine(IEnumerable<Transition<T>> transitions, T currentState)
         {
@@ -43,6 +46,7 @@ namespace WallstopStudios.DxState.State.Machine
             _states = new Dictionary<T, List<Transition<T>>>();
             _globalTransitions = new List<Transition<T>>();
             _pendingTransitions = new Queue<PendingTransition>();
+            _transitionHistory = new TransitionHistoryBuffer(DefaultTransitionHistoryCapacity);
             HashSet<T> discoveredStates = new HashSet<T>();
             HashSet<Transition<T>> uniqueTransitions = new HashSet<Transition<T>>();
 
@@ -135,6 +139,13 @@ namespace WallstopStudios.DxState.State.Machine
 
         public bool LogStateTransitions { get; set; }
 
+        public IReadOnlyList<IStateRegion> ActiveRegions =>
+            _activeRegions ?? Array.Empty<IStateRegion>();
+
+        public IReadOnlyList<TransitionExecutionContext<T>> TransitionHistory => _transitionHistory;
+
+        public int TransitionHistoryCapacity => _transitionHistory.Capacity;
+
         public event Action<TransitionExecutionContext<T>> TransitionExecuted;
         public event Action<T, T, TransitionContext> TransitionDeferred;
 
@@ -178,6 +189,42 @@ namespace WallstopStudios.DxState.State.Machine
         {
             state = _previousState;
             return _hasPreviousState;
+        }
+
+        public bool TryGetActiveHierarchicalState(out IHierarchicalStateContext<T> state)
+        {
+            state = _activeHierarchicalState;
+            return state != null;
+        }
+
+        public void CopyTransitionHistory(List<TransitionExecutionContext<T>> buffer)
+        {
+            if (buffer == null)
+            {
+                throw new ArgumentNullException(nameof(buffer));
+            }
+
+            _transitionHistory.CopyTo(buffer);
+        }
+
+        public void CopyActiveRegions(List<IStateRegion> buffer)
+        {
+            if (buffer == null)
+            {
+                throw new ArgumentNullException(nameof(buffer));
+            }
+
+            buffer.Clear();
+            IReadOnlyList<IStateRegion> regions = _activeRegions;
+            if (regions == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < regions.Count; i++)
+            {
+                buffer.Add(regions[i]);
+            }
         }
 
         public bool TryTransitionToPreviousState(TransitionContext context = default)
@@ -302,6 +349,7 @@ namespace WallstopStudios.DxState.State.Machine
                     contextToRecord
                 );
                 _hasTransitionContext = true;
+                _transitionHistory.Add(_latestTransitionContext);
 
                 if (targetState is IStateContext<T> newContext)
                 {
@@ -476,6 +524,79 @@ namespace WallstopStudios.DxState.State.Machine
             IStateRegionCoordinator coordinator = _activeRegionCoordinator
                 ?? DefaultStateRegionCoordinator.Instance;
             coordinator.UpdateRegions(regions);
+        }
+
+        private sealed class TransitionHistoryBuffer : IReadOnlyList<TransitionExecutionContext<T>>
+        {
+            private readonly TransitionExecutionContext<T>[] _buffer;
+            private int _count;
+            private int _startIndex;
+
+            public TransitionHistoryBuffer(int capacity)
+            {
+                Capacity = capacity <= 0 ? DefaultTransitionHistoryCapacity : capacity;
+                _buffer = new TransitionExecutionContext<T>[Capacity];
+                _count = 0;
+                _startIndex = 0;
+            }
+
+            public int Capacity { get; }
+
+            public TransitionExecutionContext<T> this[int index]
+            {
+                get
+                {
+                    if (index < 0 || index >= _count)
+                    {
+                        throw new ArgumentOutOfRangeException(nameof(index));
+                    }
+
+                    int resolved = (_startIndex + index) % Capacity;
+                    return _buffer[resolved];
+                }
+            }
+
+            public int Count => _count;
+
+            public IEnumerator<TransitionExecutionContext<T>> GetEnumerator()
+            {
+                for (int i = 0; i < _count; i++)
+                {
+                    yield return this[i];
+                }
+            }
+
+            System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()
+            {
+                return GetEnumerator();
+            }
+
+            public void Add(TransitionExecutionContext<T> context)
+            {
+                if (Capacity == 0)
+                {
+                    return;
+                }
+
+                int insertIndex = (_startIndex + _count) % Capacity;
+                _buffer[insertIndex] = context;
+                if (_count < Capacity)
+                {
+                    _count++;
+                    return;
+                }
+
+                _startIndex = (_startIndex + 1) % Capacity;
+            }
+
+            public void CopyTo(List<TransitionExecutionContext<T>> buffer)
+            {
+                buffer.Clear();
+                for (int i = 0; i < _count; i++)
+                {
+                    buffer.Add(this[i]);
+                }
+            }
         }
     }
 }

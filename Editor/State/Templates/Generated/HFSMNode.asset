@@ -1,0 +1,52 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 85ef7aa9df6a4e9a8b4aa7a4d88597cf, type: 3}
+  m_Name: HFSMNode
+  m_EditorClassIdentifier: 
+  _displayName: Hierarchical Node
+  _description: Creates a composite root with two child placeholders for hierarchical
+    flows.
+  _category: 1
+  _stackDefinition:
+    _name: Hierarchical Node
+    _states:
+    - _name: Composite Root
+      _kind: 1
+      _setAsInitial: 1
+      _tickMode: 1
+      _tickWhenInactive: 0
+      _notes: Acts as the parent aggregator for nested regions.
+    - _name: Primary Child
+      _kind: 0
+      _setAsInitial: 0
+      _tickMode: 1
+      _tickWhenInactive: 0
+      _notes: Entry child state for the composite.
+    - _name: Secondary Child
+      _kind: 0
+      _setAsInitial: 0
+      _tickMode: 1
+      _tickWhenInactive: 0
+      _notes: Fallback child state handled by the composite.
+    _transitions:
+    - _fromIndex: 0
+      _toIndex: 1
+      _label: Enter
+      _tooltip: Composite activates the primary child
+      _cause: 1
+      _flags: 0
+    - _fromIndex: 1
+      _toIndex: 2
+      _label: Advance
+      _tooltip: Flow to the secondary child
+      _cause: 2
+      _flags: 0

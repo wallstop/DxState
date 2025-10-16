@@ -474,6 +474,15 @@ namespace WallstopStudios.DxState.State.Stack.Components
             DeferredTransitionMetricsChanged?.Invoke(_stateStack.CurrentDeferredMetrics);
         }
 
+        private void NotifyQueueDepth()
+        {
+            int queueDepth = _stateStack.TransitionQueueDepth;
+            TransitionQueueDepthChanged?.Invoke(queueDepth);
+
+            StateStack.DeferredTransitionMetrics metrics = _stateStack.CurrentDeferredMetrics;
+            DeferredTransitionMetricsChanged?.Invoke(metrics);
+        }
+
         private void ReportConfigurationError(string details)
         {
             Debug.LogError($"StateStackManager configuration issue: {details}", this);

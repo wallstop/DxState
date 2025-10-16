@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 85ef7aa9df6a4e9a8b4aa7a4d88597cf, type: 3}
+  m_Name: TriggerState
+  m_EditorClassIdentifier: 
+  _displayName: Trigger Pair
+  _description: Adds trigger-ready placeholder states for event driven state machines.
+  _category: 2
+  _stackDefinition:
+    _name: Trigger Pair
+    _states:
+    - _name: Await Trigger
+      _kind: 2
+      _setAsInitial: 1
+      _tickMode: 1
+      _tickWhenInactive: 0
+      _notes: Monitors incoming triggers and dispatches to the active state.
+    - _name: Triggered
+      _kind: 0
+      _setAsInitial: 0
+      _tickMode: 0
+      _tickWhenInactive: 0
+      _notes: Represents the post-trigger execution window.
+    _transitions:
+    - _fromIndex: 0
+      _toIndex: 1
+      _label: On Trigger
+      _tooltip: Switch when the awaiting state fires a trigger
+      _cause: 2
+      _flags: 0

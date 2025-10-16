@@ -198,6 +198,10 @@ DxState is Wallstop Studios' state management package for Unity 2021.3, combinin
 - `StateMachineDiagnostics<T>` now captures recent executed/deferred transitions, aggregates cause counts, and tracks per-state enter/exit moments so editor tooling can render lightweight insights without instrumenting production code.
 - Open **Window ▸ Wallstop Studios ▸ DxState ▸ State Machine Diagnostics** to inspect registered machines, transition causes, per-state metrics, and recent events; adjust defaults under **Project Settings ▸ Wallstop Studios ▸ DxState ▸ Diagnostics**.
 - In the Editor, the custom `StateStackManager` inspector surfaces the live stack, registered states (with push/flatten controls), diagnostics, and a one-click clear button while in play mode.
+
+## Further Reading
+
+- Review [State Authoring Best Practices](Documentation/StateAuthoring.md) for guidance on choosing between ScriptableObject and MonoBehaviour states, meeting lifecycle contracts, and wiring dependencies safely.
 - Open **Window ▸ Wallstop Studios ▸ DxState ▸ State Stack Debugger** to monitor stacks in a dedicated editor window, push new states by name, and inspect diagnostics without selecting the manager object.
 - Drop the `StateStackDiagnosticsOverlay` MonoBehaviour on the same object as `StateStackManager` (included in the sample prefab) to toggle an in-game overlay that lists the active stack and recent events (default hotkey: `F9`).
   Use the toolbar buttons to cycle between floating/docked presets or lock the overlay to avoid accidental drags, pause/step through diagnostics snapshots, pin states you care about, switch to the timeline tab to visualize recent transitions as a sparkline, and apply event-type filters to focus on actionable entries.

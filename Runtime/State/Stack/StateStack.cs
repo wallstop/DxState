@@ -52,8 +52,17 @@ namespace WallstopStudios.DxState.State.Stack
 
         public float Progress => _latestProgress;
 
+        public int TransitionQueueDepth => Math.Max(0, _transitionQueue.Count);
+
+        public DeferredTransitionMetrics CurrentDeferredMetrics =>
+            new DeferredTransitionMetrics(
+                _lifetimeDeferredTransitionCount,
+                _currentDeferredTransitionCount
+            );
+
         public IReadOnlyDictionary<string, IState> RegisteredStates => _statesByName;
         public IReadOnlyList<IState> Stack => _stack;
+        public IReadOnlyList<StateStackTransitionRecord> TransitionHistory => _transitionHistory;
 
         public event Action<IState, IState> OnStatePushed;
         public event Action<IState, IState> OnStatePopped;
@@ -79,7 +88,7 @@ namespace WallstopStudios.DxState.State.Stack
             public int PendingDeferred { get; }
         }
 
-        private enum TransitionOperation
+        public enum TransitionOperation
         {
             Push,
             Pop,
@@ -122,6 +131,7 @@ namespace WallstopStudios.DxState.State.Stack
         private readonly Queue<QueuedTransition> _transitionQueue = new Queue<QueuedTransition>();
         private readonly List<IState> _removalPreviousBuffer = new List<IState>();
         private readonly List<IState> _removalNextBuffer = new List<IState>();
+        private readonly TransitionHistoryBuffer _transitionHistory;
 
         private int _currentDeferredTransitionCount;
         private int _lifetimeDeferredTransitionCount;
@@ -130,10 +140,13 @@ namespace WallstopStudios.DxState.State.Stack
         private float _latestProgress = 1f;
         private readonly int _mainThreadId;
 
+        private const int DefaultTransitionHistoryCapacity = 64;
+
         public StateStack()
         {
             _masterProgress = new StateTransitionProgressReporter(this);
             _mainThreadId = Thread.CurrentThread.ManagedThreadId;
+            _transitionHistory = new TransitionHistoryBuffer(DefaultTransitionHistoryCapacity);
         }
 
         private void RecordTransitionProgress(float value)
@@ -173,6 +186,16 @@ namespace WallstopStudios.DxState.State.Stack
                 _transitionWaiter = TransitionCompletionSource.Rent();
             }
             return _transitionWaiter.AsValueTask();
+        }
+
+        public void CopyTransitionHistory(List<StateStackTransitionRecord> buffer)
+        {
+            if (buffer == null)
+            {
+                throw new ArgumentNullException(nameof(buffer));
+            }
+
+            _transitionHistory.CopyTo(buffer);
         }
 
         public bool TryRegister(IState state, bool force = false)
@@ -1073,6 +1096,17 @@ namespace WallstopStudios.DxState.State.Stack
                 {
                     OnTransitionComplete?.Invoke(transitionStartState, CurrentState);
                 }
+                _transitionHistory.Add(
+                    new StateStackTransitionRecord(
+                        DateTime.UtcNow,
+                        request.Operation,
+                        transitionStartState,
+                        CurrentState,
+                        request.TargetState,
+                        request.Options,
+                        request.ShouldRaiseEvents
+                    )
+                );
             }
             catch (Exception exception)
             {
@@ -1316,6 +1350,124 @@ namespace WallstopStudios.DxState.State.Stack
             public void Report(float value)
             {
                 _owner.RecordTransitionProgress(value);
+            }
+        }
+
+        public enum StateStackTransitionType
+        {
+            Push = TransitionOperation.Push,
+            Pop = TransitionOperation.Pop,
+            Flatten = TransitionOperation.Flatten,
+            Clear = TransitionOperation.Clear,
+            Remove = TransitionOperation.Remove,
+        }
+
+        public readonly struct StateStackTransitionRecord
+        {
+            public StateStackTransitionRecord(
+                DateTime timestampUtc,
+                TransitionOperation operation,
+                IState previousState,
+                IState currentState,
+                IState requestedTarget,
+                StateTransitionOptions options,
+                bool raisedEvents
+            )
+            {
+                TimestampUtc = timestampUtc;
+                Operation = (StateStackTransitionType)operation;
+                PreviousState = previousState;
+                CurrentState = currentState;
+                RequestedTarget = requestedTarget;
+                Options = options;
+                RaisedEvents = raisedEvents;
+            }
+
+            public DateTime TimestampUtc { get; }
+
+            public StateStackTransitionType Operation { get; }
+
+            public IState PreviousState { get; }
+
+            public IState CurrentState { get; }
+
+            public IState RequestedTarget { get; }
+
+            public StateTransitionOptions Options { get; }
+
+            public bool RaisedEvents { get; }
+        }
+
+        private sealed class TransitionHistoryBuffer : IReadOnlyList<StateStackTransitionRecord>
+        {
+            private readonly StateStackTransitionRecord[] _buffer;
+            private int _count;
+            private int _startIndex;
+
+            public TransitionHistoryBuffer(int capacity)
+            {
+                Capacity = capacity <= 0 ? DefaultTransitionHistoryCapacity : capacity;
+                _buffer = new StateStackTransitionRecord[Capacity];
+                _count = 0;
+                _startIndex = 0;
+            }
+
+            public int Capacity { get; }
+
+            public StateStackTransitionRecord this[int index]
+            {
+                get
+                {
+                    if (index < 0 || index >= _count)
+                    {
+                        throw new ArgumentOutOfRangeException(nameof(index));
+                    }
+
+                    int resolved = (_startIndex + index) % Capacity;
+                    return _buffer[resolved];
+                }
+            }
+
+            public int Count => _count;
+
+            public void Add(StateStackTransitionRecord record)
+            {
+                if (Capacity == 0)
+                {
+                    return;
+                }
+
+                int insertIndex = (_startIndex + _count) % Capacity;
+                _buffer[insertIndex] = record;
+                if (_count < Capacity)
+                {
+                    _count++;
+                    return;
+                }
+
+                _startIndex = (_startIndex + 1) % Capacity;
+            }
+
+            public void CopyTo(List<StateStackTransitionRecord> buffer)
+            {
+                buffer.Clear();
+                for (int i = 0; i < _count; i++)
+                {
+                    buffer.Add(this[i]);
+                }
+            }
+
+            public IEnumerator<StateStackTransitionRecord> GetEnumerator()
+            {
+                for (int i = 0; i < _count; i++)
+                {
+                    yield return this[i];
+                }
+            }
+
+            System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()
+            {
+                return GetEnumerator();
             }
         }
 

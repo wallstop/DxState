@@ -13,21 +13,21 @@
    - Enable drag-and-drop authoring from Project view into GraphView to create new state references and auto-wire initial transitions. (Completed – GraphView now accepts dragged state assets and appends them with undo support.)
    - Record undoable operations for node reordering, edge edits, and state insertion/removal to ensure editor workflows stay safe. (Completed – GraphView operations now wrap metadata changes and edge/node edits with Undo support.)
 
-2. [ ] Deepen diagnostics overlay UX for live debugging.
+2. [x] Deepen diagnostics overlay UX for live debugging.
    - Offer preset layouts (corner, docked strip, compact HUD) and a lock toggle to prevent accidental repositioning. (Completed – diagnostics overlay now supports layout cycling and position locking.)
    - Expose filters (e.g. only failures/manual transitions) and severity color-coding to focus on actionable events during play mode. (Completed – overlay now has event-type filters and color-coded listings.)
    - Add pause/step controls to temporarily halt automatic updates, step through queued transitions, or examine snapshots without losing context. (Completed – overlay supports pausing with snapshot capture and single-step replay.)
    - Provide timeline visualization (small sparkline/timeline) of the past N transitions with durations and causes; allow bookmarking/pinning a state for closer inspection. (Completed – overlay timeline draws filtered sparklines, and states can be pinned/monitored.)
-   - Support theming (color/font scale) for readability on various backgrounds and accessibility needs.
+   - Support theming (color/font scale) for readability on various backgrounds and accessibility needs. (Completed – overlay now exposes dark/light/high-contrast presets, custom palettes, and font scaling so teams can tailor diagnostics for accessibility.)
 
 3. [ ] Improve authoring data surfaces (serialization & ScriptableObjects).
-   - Add ScriptableObject templates for common state machine patterns (HFSM nodes, trigger states) and integrate them into the GraphView create menu.
-   - Implement asset validation pipeline (editor utility) that scans `StateGraphAsset` and `StateStackConfiguration` for missing states, duplicate initials, or mismatched history flags; surface results in console and GraphView warnings.
-   - Provide serialization hooks to export/import graphs/stacks to JSON for diff-friendly reviews and potential runtime loading.
-   - Document best practices for using ScriptableObject vs MonoBehaviour states, including lifecycle requirements (enter/exit/tick) and dependency injection (e.g. via SerializedReference).
+   - Add ScriptableObject templates for common state machine patterns (HFSM nodes, trigger states) and integrate them into the GraphView create menu. (Completed – template assets now bootstrap automatically, GraphView lists them for quick insertion, and placeholder states are generated as sub-assets.)
+   - Implement asset validation pipeline (editor utility) that scans `StateGraphAsset` and `StateStackConfiguration` for missing states, duplicate initials, or mismatched history flags; surface results in console and GraphView warnings. (Completed – validation tooling now logs detailed reports, highlights issues in GraphView, and is available via toolbar and Assets menu.)
+   - Provide serialization hooks to export/import graphs/stacks to JSON for diff-friendly reviews and potential runtime loading. (Completed – JSON utilities now export/import via menu commands, storing GUID/local IDs so teams can diff and reconstruct stacks.)
+   - Document best practices for using ScriptableObject vs MonoBehaviour states, including lifecycle requirements (enter/exit/tick) and dependency injection (e.g. via SerializedReference). (Completed – guidance now lives in `Documentation/StateAuthoring.md` and is linked from the README.)
 
 4. [ ] Expand runtime introspection APIs for tooling integration.
-   - Add query APIs on `StateStack` and `StateMachine<T>` to retrieve transition history, branch structures, and region diagnostics for custom tooling. (In Progress – StateMachineDiagnostics now aggregates executed/deferred events, per-state enter/exit metrics, and cause counts, and editor tooling surfaces the live registry.)
+   - Add query APIs on `StateStack` and `StateMachine<T>` to retrieve transition history, branch structures, and region diagnostics for custom tooling. (Completed – new `TransitionHistory`/`CopyTransitionHistory` surfaces on both stacks and machines expose recent transitions, while `ActiveRegions` helpers surface hierarchical activity.)
    - Provide editor-level configuration (ScriptableObject singleton) for diagnostics tooling to persist view preferences across sessions. (Completed – StateMachineDiagnosticsSettings now drives the diagnostics window.)
    - Emit editor events (UnityEvent or callback) when GraphView edits modify the underlying asset to allow other tools (e.g. CI lint) to react.
    - Provide serialization helpers to snapshot/restore entire hierarchical machine stacks for replay or unit testing.
