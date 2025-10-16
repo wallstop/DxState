@@ -32,6 +32,12 @@ namespace WallstopStudios.DxState.Editor.State
 
         private readonly List<string> _stackOptions = new List<string>();
         private StateStackGraphView _graphView;
+        private TwoPaneSplitView _contentSplitView;
+        private VisualElement _inspectorPanel;
+        private Label _inspectorTitleLabel;
+        private IMGUIContainer _inspectorGuiContainer;
+        private Editor _currentInspectorEditor;
+        private UnityEngine.Object _currentInspectorTarget;
 
         public static void Open(StateGraphAsset graphAsset, string stackName)
         {
@@ -70,7 +76,12 @@ namespace WallstopStudios.DxState.Editor.State
                 _graphView.DisposeView();
                 _graphView = null;
             }
+            DisposeInspectorEditor();
             rootVisualElement.Clear();
+            _contentSplitView = null;
+            _inspectorPanel = null;
+            _inspectorTitleLabel = null;
+            _inspectorGuiContainer = null;
         }
 
         private void ConstructUI()
@@ -129,6 +140,14 @@ namespace WallstopStudios.DxState.Editor.State
             _statusLabel = new Label();
             _toolbar.Add(_statusLabel);
 
+            _contentSplitView = new TwoPaneSplitView(
+                0,
+                600f,
+                TwoPaneSplitViewOrientation.Horizontal
+            );
+            _contentSplitView.style.flexGrow = 1f;
+            rootVisualElement.Add(_contentSplitView);
+
             _graphView = new StateStackGraphView
             {
                 GraphModified = () =>
@@ -137,8 +156,110 @@ namespace WallstopStudios.DxState.Editor.State
                     HighlightGraph();
                 },
             };
+            _graphView.StateSelected = HandleStateSelection;
             _graphView.StretchToParentSize();
-            rootVisualElement.Add(_graphView);
+            _contentSplitView.Add(_graphView);
+
+            BuildInspectorPanel();
+            _contentSplitView.Add(_inspectorPanel);
+        }
+
+        private void BuildInspectorPanel()
+        {
+            _inspectorPanel = new VisualElement();
+            _inspectorPanel.style.flexGrow = 1f;
+            _inspectorPanel.style.flexDirection = FlexDirection.Column;
+            _inspectorPanel.style.minWidth = 280f;
+
+            _inspectorTitleLabel = new Label("Inspector");
+            _inspectorTitleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+            _inspectorTitleLabel.style.paddingLeft = 8f;
+            _inspectorTitleLabel.style.paddingTop = 6f;
+            _inspectorTitleLabel.style.paddingBottom = 6f;
+            _inspectorPanel.Add(_inspectorTitleLabel);
+
+            _inspectorGuiContainer = new IMGUIContainer(DrawInspector);
+            _inspectorGuiContainer.style.flexGrow = 1f;
+            _inspectorGuiContainer.style.paddingLeft = 4f;
+            _inspectorGuiContainer.style.paddingRight = 4f;
+            _inspectorGuiContainer.style.paddingTop = 4f;
+            _inspectorGuiContainer.style.paddingBottom = 4f;
+            _inspectorPanel.Add(_inspectorGuiContainer);
+
+            _inspectorGuiContainer.MarkDirtyRepaint();
+        }
+
+        private void HandleStateSelection(UnityEngine.Object stateObject)
+        {
+            if (ReferenceEquals(_currentInspectorTarget, stateObject))
+            {
+                return;
+            }
+
+            DisposeInspectorEditor();
+            _currentInspectorTarget = stateObject;
+
+            if (_inspectorTitleLabel != null)
+            {
+                _inspectorTitleLabel.text = stateObject != null
+                    ? $"Inspector — {stateObject.name}"
+                    : "Inspector";
+            }
+
+            if (stateObject == null)
+            {
+                return;
+            }
+
+            try
+            {
+                _currentInspectorEditor = Editor.CreateEditor(stateObject);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception, stateObject);
+                _currentInspectorEditor = null;
+            }
+            if (_inspectorGuiContainer != null)
+            {
+                _inspectorGuiContainer.MarkDirtyRepaint();
+            }
+        }
+
+        private void DisposeInspectorEditor()
+        {
+            if (_currentInspectorEditor != null)
+            {
+                UnityEngine.Object.DestroyImmediate(_currentInspectorEditor);
+                _currentInspectorEditor = null;
+            }
+
+            _currentInspectorTarget = null;
+
+            if (_inspectorGuiContainer != null)
+            {
+                _inspectorGuiContainer.MarkDirtyRepaint();
+            }
+
+            if (_inspectorTitleLabel != null)
+            {
+                _inspectorTitleLabel.text = "Inspector";
+            }
+        }
+
+        private void DrawInspector()
+        {
+            if (_currentInspectorEditor == null || _currentInspectorTarget == null)
+            {
+                GUILayout.Space(4f);
+                EditorGUILayout.HelpBox(
+                    "Select a state node to preview its inspector.",
+                    MessageType.Info
+                );
+                return;
+            }
+
+            _currentInspectorEditor.OnInspectorGUI();
         }
 
         private void RefreshGraphData(bool repopulate)
@@ -210,7 +331,13 @@ namespace WallstopStudios.DxState.Editor.State
         {
             SerializedProperty stackProperty = FindStackProperty(_stackName);
             StateStackConfiguration configuration = ResolveConfiguration(_graph, _stackName);
-            _graphView?.Populate(_graphSerialized, stackProperty, _graphAsset, configuration);
+            if (_graphView != null)
+            {
+                _graphView.Populate(_graphSerialized, stackProperty, _graphAsset, configuration);
+                _graphView.ClearSelection();
+            }
+
+            HandleStateSelection(null);
         }
 
         private SerializedProperty FindStackProperty(string stackName)
@@ -300,6 +427,7 @@ namespace WallstopStudios.DxState.Editor.State
             private readonly List<StateNode> _nodes;
 
             public Action GraphModified { get; set; }
+            public Action<UnityEngine.Object> StateSelected { get; set; }
 
             public StateStackGraphView()
             {
@@ -314,11 +442,39 @@ namespace WallstopStudios.DxState.Editor.State
                 grid.StretchToParentSize();
 
                 graphViewChanged += OnGraphViewChanged;
+                RegisterCallback<DragUpdatedEvent>(OnDragUpdated);
+                RegisterCallback<DragPerformEvent>(OnDragPerform);
+                RegisterCallback<DragLeaveEvent>(OnDragLeave);
+            }
+
+            protected override void OnSelectionChanged(List<ISelectable> selection)
+            {
+                base.OnSelectionChanged(selection);
+
+                UnityEngine.Object selectedObject = null;
+                if (selection != null)
+                {
+                    for (int i = 0; i < selection.Count; i++)
+                    {
+                        StateNode node = selection[i] as StateNode;
+                        if (node != null)
+                        {
+                            selectedObject = node.StateObject;
+                            break;
+                        }
+                    }
+                }
+
+                StateSelected?.Invoke(selectedObject);
             }
 
             public void DisposeView()
             {
+                ClearSelection();
                 graphViewChanged -= OnGraphViewChanged;
+                UnregisterCallback<DragUpdatedEvent>(OnDragUpdated);
+                UnregisterCallback<DragPerformEvent>(OnDragPerform);
+                UnregisterCallback<DragLeaveEvent>(OnDragLeave);
                 DeleteElements(graphElements.ToList());
                 _nodes.Clear();
                 _serializedGraph = null;
@@ -326,6 +482,8 @@ namespace WallstopStudios.DxState.Editor.State
                 _graphAsset = null;
                 _configuration = null;
                 _currentManager = null;
+                StateSelected?.Invoke(null);
+                StateSelected = null;
             }
 
             public void Populate(
@@ -340,6 +498,8 @@ namespace WallstopStudios.DxState.Editor.State
                 _graphAsset = graphAsset;
                 _configuration = configuration;
 
+                ClearSelection();
+                StateSelected?.Invoke(null);
                 DeleteElements(graphElements.ToList());
                 _nodes.Clear();
 
@@ -389,6 +549,91 @@ namespace WallstopStudios.DxState.Editor.State
 
                 CreateSequentialEdges();
                 Highlight(_currentManager);
+            }
+
+            private void OnDragUpdated(DragUpdatedEvent evt)
+            {
+                List<UnityEngine.Object> candidateStates;
+                if (!TryCollectDraggedStates(out candidateStates))
+                {
+                    DragAndDrop.visualMode = DragAndDropVisualMode.Rejected;
+                    return;
+                }
+
+                DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
+                evt.StopPropagation();
+            }
+
+            private void OnDragPerform(DragPerformEvent evt)
+            {
+                if (!TryCollectDraggedStates(out List<UnityEngine.Object> draggedStates) || draggedStates.Count == 0)
+                {
+                    DragAndDrop.visualMode = DragAndDropVisualMode.Rejected;
+                    return;
+                }
+
+                DragAndDrop.AcceptDrag();
+
+                for (int i = 0; i < draggedStates.Count; i++)
+                {
+                    AddStateReference(draggedStates[i]);
+                }
+
+                evt.StopPropagation();
+            }
+
+            private void OnDragLeave(DragLeaveEvent evt)
+            {
+                DragAndDrop.visualMode = DragAndDropVisualMode.None;
+            }
+
+            private bool TryCollectDraggedStates(out List<UnityEngine.Object> states)
+            {
+                states = new List<UnityEngine.Object>();
+
+                UnityEngine.Object[] draggedObjects = DragAndDrop.objectReferences;
+                if (draggedObjects == null || draggedObjects.Length == 0)
+                {
+                    return false;
+                }
+
+                for (int i = 0; i < draggedObjects.Length; i++)
+                {
+                    UnityEngine.Object candidate = draggedObjects[i];
+                    if (candidate == null)
+                    {
+                        continue;
+                    }
+
+                    if (candidate is IState)
+                    {
+                        states.Add(candidate);
+                        continue;
+                    }
+
+                    Component componentCandidate = candidate as Component;
+                    if (componentCandidate != null && componentCandidate is IState)
+                    {
+                        states.Add(componentCandidate);
+                        continue;
+                    }
+
+                    GameObject gameObject = candidate as GameObject;
+                    if (gameObject != null)
+                    {
+                        Component[] components = gameObject.GetComponents<Component>();
+                        for (int c = 0; c < components.Length; c++)
+                        {
+                            Component component = components[c];
+                            if (component is IState)
+                            {
+                                states.Add(component);
+                            }
+                        }
+                    }
+                }
+
+                return states.Count > 0;
             }
 
             public void Highlight(StateStackManager manager)

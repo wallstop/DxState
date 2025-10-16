@@ -1,58 +1,51 @@
 # DxState Improvement Plan
 
+## Completed Work
+- [x] State stack runtime instrumentation: cancellation-aware transitions, diagnostics export, global transitions, composite state helpers, stack regions.
+- [x] Authoring surfaces: StateGraph editor with validation/search, live manager controls, diagnostics overlay integration, GraphView window with runtime highlighting.
+
 ## High Priority
-1. [x] Add hierarchical and orthogonal state machinery across stack and component surfaces.
-   - Status: Completed — hierarchical contexts, global transitions, history, coordinators, composite/MonoBehaviour helpers, stack regions, and priority policies are in place.
-   - Observations: `Runtime/State/Machine/StateMachine.cs:17` only models flat transitions and lacks enter/exit propagation to child machines; `Runtime/State/Stack/StateStack.cs:95` manages a simple pushdown stack without nested sub-stacks or history states.
-   - Approach: Introduce composite `IStateContext`/`IState` implementations that can own child machines, add history/any-state semantics, and surface APIs for configurable parallel regions. Provide migration helpers so existing states can opt in without breaking changes.
-   - Impact: Unlocks complex game flows (UI overlays, combat modes) without spinning up additional managers, improves usability and extendability for teams expecting HFSM/statechart capabilities similar to Animator/Playmaker.
+1. [ ] Enrich GraphView authoring and debugging for complex state machines.
+   - Add edge-level metadata (transition cause, guard summary, context flags) and tooltips sourced from `TransitionContext` to mirror non-linear logic.
+   - Support multi-edge branching: allow linking a node to multiple successors with labeled connections, including drag-to-create edges that inject new transition definitions back into the asset.
+   - Provide inline metrics overlays (transition count, average duration, last triggered timestamp) by streaming data from `StateStackDiagnostics`; visually animate active edges.
+   - Implement state/node inspector syncing: selecting a node opens its serialized state (MonoBehaviour or ScriptableObject) in an embedded inspector panel for quick edits. (Completed – GraphView window now hosts a docked inspector that tracks the active node.)
+   - Enable drag-and-drop authoring from Project view into GraphView to create new state references and auto-wire initial transitions. (Completed – GraphView now accepts dragged state assets and appends them with undo support.)
+   - Record undoable operations for node reordering, edge edits, and state insertion/removal to ensure editor workflows stay safe.
 
-2. [x] Ship visual authoring & debugging tools for `StateGraphAsset` and live stacks.
-   - Status: Completed — editor window features stack editing/search, validation cues, runtime diagnostics controls/export, graph preview, and a fully editable GraphView with live highlighting.
-   - Observations: `Runtime/State/Stack/Builder/StateGraphAsset.cs:13` defines data containers but there is no dedicated editor (only `Editor/State/StateStackManagerEditor.cs` for runtime inspection).
-   - Approach: Build a UI Toolkit/GraphView editor to author graphs, generate transitions, simulate flows, and push changes into play mode. Add a runtime inspector overlay showing queued transitions, progress, and diagnostics beyond the existing overlay.
-   - Impact: Dramatically lowers onboarding cost, aligns with designer expectations (graph editing), and improves understandability/debuggability.
+2. [ ] Deepen diagnostics overlay UX for live debugging.
+   - Offer preset layouts (corner, docked strip, compact HUD) and a lock toggle to prevent accidental repositioning.
+   - Expose filters (e.g. only failures/manual transitions) and severity color-coding to focus on actionable events during play mode.
+   - Add pause/step controls to temporarily halt automatic updates, step through queued transitions, or examine snapshots without losing context.
+   - Provide timeline visualization (small sparkline/timeline) of the past N transitions with durations and causes; allow bookmarking/pinning a state for closer inspection.
+   - Support theming (color/font scale) for readability on various backgrounds and accessibility needs.
 
-3. [x] Harden asynchronous transitions with cancellation, timeouts, and fault recovery.
-   - Status: Completed — `StateTransitionOptions` added for cancellation/timeout, `StateStack` propagates tokens, exposes timeout/cancel exceptions, and tests cover new behaviours.
-   - Observations: Entry/exit paths in `Runtime/State/Stack/StateStack.cs:215` await `ValueTask` without cancellation; `FunctionalState`/`GameplayLoopState` rely on user-supplied delegates that can hang.
-   - Approach: Thread a `CancellationToken` (or scoped transition token) through `Enter/Exit/Remove`, expose timeout policies, and surface diagnostics when a state stalls. Ensure `TransitionCompletionSource` can propagate cancellations cleanly.
-   - Impact: Improves robustness, avoids hard locks in production, and gives teams tooling to abort problematic states safely.
+3. [ ] Improve authoring data surfaces (serialization & ScriptableObjects).
+   - Add ScriptableObject templates for common state machine patterns (HFSM nodes, trigger states) and integrate them into the GraphView create menu.
+   - Implement asset validation pipeline (editor utility) that scans `StateGraphAsset` and `StateStackConfiguration` for missing states, duplicate initials, or mismatched history flags; surface results in console and GraphView warnings.
+   - Provide serialization hooks to export/import graphs/stacks to JSON for diff-friendly reviews and potential runtime loading.
+   - Document best practices for using ScriptableObject vs MonoBehaviour states, including lifecycle requirements (enter/exit/tick) and dependency injection (e.g. via SerializedReference).
+
+4. [ ] Expand runtime introspection APIs for tooling integration.
+   - Add query APIs on `StateStack` and `StateMachine<T>` to retrieve transition history, branch structures, and region diagnostics for custom tooling.
+   - Emit editor events (UnityEvent or callback) when GraphView edits modify the underlying asset to allow other tools (e.g. CI lint) to react.
+   - Provide serialization helpers to snapshot/restore entire hierarchical machine stacks for replay or unit testing.
 
 ## Medium Priority
-4. [ ] Refactor transition rules to support allocation-free structs and preallocated pools.
-   - Status: Not started
-   - Observations: `StateMachineBuilder.AddTransition` (Runtime/State/Machine/StateMachineBuilder.cs:32) captures `Func<bool>` delegates; `ComponentStateTransition.cs:24` wraps target state checks with new lambdas; `FunctionalState.cs:11` and `GameplayLoopState.cs:19` keep delegate fields. Each instantiation allocates and prevents Burst-friendly usage.
-   - Approach: Introduce generic `Transition<TState, TRule>` where `TRule : struct, ITransitionRule`, add pooled rule instances, and extend builders/factories to work with `WallstopArrayPool`/`WallstopFastArrayPool` for reusable buffers. Provide source analyzers to flag high-frequency closures.
-   - Impact: Reduces GC pressure in hot paths, enabling deterministic behaviour for performance-sensitive projects and easing integration with Burst/DOTS code.
+5. [ ] Extend state machine performance options.
+   - Offer Burst/DOTS-friendly state machine variants (struct-based, jobified evaluation) and bridge them to existing APIs.
+   - Introduce pooling for frequently created transitions/rules to minimise GC churn in high frequency updates.
+   - Benchmark and expose profiling hooks (Unity Profiler markers) around `StateStack` operations.
 
-5. [ ] Provide persistent snapshot & restore support for stacks and machines.
-   - Status: Not started
-   - Observations: Neither `StateStack` nor `StateMachine` expose serialization beyond transient diagnostics.
-   - Approach: Define serializable descriptors (state id, progress, queued transitions), integrate with `SerializedMessageAwareComponent`, and offer save/load APIs plus editor validation. Support partial restores (e.g., restoring only specific stacks) for usability.
-   - Impact: Enables save systems, level restarts, and tooling that require durable state, boosting robustness and ease of use in real games.
-
-6. [ ] Expand pooled collection usage in scenario states and builders.
-   - Status: Not started
-   - Observations: `StateGroup.CopyChildStates` and various factories (`SceneStateFactory.cs:65`, `ExclusiveSceneSetState.cs:42`) allocate new `List<>` buffers each call; graph builders call `_states.ToArray()` (`StateStackBuilder.cs:66`).
-   - Approach: Replace ad-hoc `List` snapshots with `PooledArray<T>`/`WallstopArrayPool<T>` backed spans, provide helper utilities for deterministic cleanup, and benchmark gains with the existing test harness.
-   - Impact: Shrinks transient GC allocations when composing states at runtime or building graphs repeatedly, improving performance for dynamic content pipelines.
-
-7. [ ] Add DOTS/job-system friendly adapters and Burst-compatible state flows.
-   - Status: Not started
-   - Observations: Current APIs rely on managed delegates and UnityEngine types, blocking use inside ECS systems.
-   - Approach: Introduce pure C# struct-based state machines (no UnityEngine dependency), add conversion layers to mirror stack changes into Entities, and document scheduling patterns.
-   - Impact: Extends the feature set to projects using Entities or high-performance gameplay code.
-
-8. [ ] Strengthen automated testing around high-load scenarios and designer tooling.
-   - Status: Not started
-   - Observations: Test suite is rich but lacks stress/performance regression cases and editor-tool coverage.
-   - Approach: Add long-running transition queue tests, cancellation tests once implemented, and play-mode coverage for `StateGraphAsset` authoring plus diagnostics overlays.
-   - Impact: Improves confidence as the library grows and guards against regressions in critical orchestration flows.
+6. [ ] Sample content and documentation.
+   - Ship sample scenes demonstrating HFSM usage, GraphView authoring workflow, and overlay diagnostics in action.
+   - Publish step-by-step guides for common tasks (building hierarchical graphs, wiring overlays, debugging live transitions) and link them from the README/editor window.
 
 ## Low Priority
-9. [ ] Offer bridges to complementary state paradigms (behaviour trees, GOAP, Animator) and richer sample content.
-   - Status: Not started
-   - Observations: README lists scenarios but no direct integration with Unity Animator, Playables, or third-party AI frameworks.
-   - Approach: Ship adapter states that sync Animator sub-state machines, expose behaviour-tree entry points, and expand Samples with end-to-end gameplay loops demonstrating the new tooling.
-   - Impact: Enhances usability for teams mixing paradigms, showcasing flexibility and lowering adoption friction.
+7. [ ] Integrate with complementary state paradigms.
+   - Provide adapters to sync Animator state machines, Behaviour Trees, or GOAP planners into DxState (e.g. nodes that react to Animator parameters).
+   - Allow GraphView to embed references to external assets (Animator Controllers, Timeline assets) with context-specific icons and metadata.
+
+8. [ ] Collaborative tooling niceties.
+   - Add change tracking annotations in GraphView (highlight nodes modified since last save) to aid code reviews.
+   - Provide CLI utilities to export diagnostics snapshots for automated bug reports or CI validation.
