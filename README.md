@@ -35,12 +35,14 @@ DxState is Wallstop Studios' state management package for Unity 2021.3, combinin
 
     - Create an empty `GameObject` (for example, `GameStack`) and add `StateStackManager`.
     - The manager automatically ensures a `MessagingComponent` is present and exposes a **Beginner Setup** foldout so you can register child `GameState` components, drag additional states into a list, and choose an initial state without writing code.
+    - Enable *Diagnostics HUD Preset* to attach the built-in overlay (toggle key defaults to `F9`) so newcomers see the active stack, progress, and metrics immediately.
     - Enable *Push Initial State On Start* if you want the configured initial state to become active automatically when play mode begins.
 
 2. **Expose a beginner-friendly API (optional)**
 
     - Add `StateStackFacade` to the same object to mirror the stack through inspector-friendly `UnityEvent<GameState>` hooks.
     - Wire HUD buttons to `PushState`, `PopState`, or `ReplaceState` methods and listen for the provided events (`On State Pushed`, `On State Popped`, `On State Changed`) to update UI without touching `ValueTask` workflows.
+    - Scaffold new states quickly via **Assets ▸ Create ▸ Wallstop Studios ▸ DxState ▸ Game State**, which generates a correctly wired `GameState` subclass.
 
 3. **Author game states**
 
@@ -111,7 +113,13 @@ DxState is Wallstop Studios' state management package for Unity 2021.3, combinin
 
     - The manager mirrors all `StateStack` APIs (`PushAsync`, `PopAsync`, `FlattenAsync`, `RemoveAsync`, etc.) and emits DxMessaging events automatically.
 
-5. **(Optional) build stack configurations fluently**
+5. **(Optional) load stack configurations from assets**
+
+    - Assign a `StateGraphAsset` to `StateStackManager` and enable *Apply State Graph On Start* to ingest designer-authored stacks without code.
+    - Set *State Graph Stack Name* to choose which stack from the asset applies at runtime. Leave blank to take the first defined stack.
+    - Toggle *Force Register Graph States* / *Ensure Graph Initial Active* to control registration behaviour and whether the asset’s initial selection is activated immediately.
+
+6. **(Optional) build stack configurations fluently**
 
     For projects that compose stacks at runtime, use `StateStackBuilder` to register states and define the initial state declaratively:
 
@@ -146,7 +154,7 @@ DxState is Wallstop Studios' state management package for Unity 2021.3, combinin
 
     `ApplyAsync` registers every state with the stack (respecting `forceRegister`) and ensures the configured initial state is active by pushing or flattening as needed.
 
-6. **Compose multi-stack graphs** (optional)
+7. **Compose multi-stack graphs** (optional)
 
     When multiple stacks need to be bootstrapped together, use `StateGraphBuilder` to declare each stack, its states, and initial selection in a single fluent block:
 

@@ -2,6 +2,7 @@ namespace WallstopStudios.DxState.State.Stack
 {
     using System;
     using System.Collections.Generic;
+    using System.Threading;
     using System.Threading.Tasks;
     using UnityEngine;
     using UnityHelpers.Core.Extension;
@@ -121,10 +122,12 @@ namespace WallstopStudios.DxState.State.Stack
 
         private bool _isTransitioning;
         private float _latestProgress = 1f;
+        private readonly int _mainThreadId;
 
         public StateStack()
         {
             _masterProgress = new StateTransitionProgressReporter(this);
+            _mainThreadId = Thread.CurrentThread.ManagedThreadId;
         }
 
         private void RecordTransitionProgress(float value)
@@ -154,6 +157,7 @@ namespace WallstopStudios.DxState.State.Stack
 
         public ValueTask WaitForTransitionCompletionAsync()
         {
+            EnsureMainThread(nameof(WaitForTransitionCompletionAsync));
             if (!_isTransitioning && _transitionQueue.Count == 0)
             {
                 return new ValueTask();
@@ -169,10 +173,11 @@ namespace WallstopStudios.DxState.State.Stack
         {
             if (force)
             {
+                EnsureValidStateName(state);
                 _statesByName[state.Name] = state;
                 return true;
             }
-
+            EnsureValidStateName(state);
             return _statesByName.TryAdd(state.Name, state);
         }
 
@@ -183,6 +188,14 @@ namespace WallstopStudios.DxState.State.Stack
 
         public bool Unregister(string stateName)
         {
+            if (string.IsNullOrWhiteSpace(stateName))
+            {
+                throw new ArgumentException(
+                    "State name must be provided when unregistering.",
+                    nameof(stateName)
+                );
+            }
+
             return _statesByName.Remove(stateName);
         }
 
@@ -193,12 +206,19 @@ namespace WallstopStudios.DxState.State.Stack
                 throw new ArgumentNullException(nameof(newState));
             }
 
+            EnsureMainThread(nameof(PushAsync));
             _ = TryRegister(newState);
             await PerformTransition(TransitionOperation.Push, newState);
         }
 
         public async ValueTask PushAsync(string stateName)
         {
+            EnsureMainThread(nameof(PushAsync));
+            if (string.IsNullOrWhiteSpace(stateName))
+            {
+                throw new ArgumentException("State name must be provided.", nameof(stateName));
+            }
+
             if (!_statesByName.TryGetValue(stateName, out IState state))
             {
                 throw new ArgumentException(
@@ -266,6 +286,7 @@ namespace WallstopStudios.DxState.State.Stack
 
         public async ValueTask<IState> PopAsync()
         {
+            EnsureMainThread(nameof(PopAsync));
             if (_stack.Count == 0)
             {
                 throw new InvalidOperationException("Cannot pop from an empty stack.");
@@ -279,6 +300,7 @@ namespace WallstopStudios.DxState.State.Stack
 
         public async ValueTask<IState> TryPopAsync()
         {
+            EnsureMainThread(nameof(TryPopAsync));
             if (_stack.Count == 0)
             {
                 return null;
@@ -324,6 +346,7 @@ namespace WallstopStudios.DxState.State.Stack
             {
                 throw new ArgumentNullException(nameof(state));
             }
+            EnsureMainThread(nameof(FlattenAsync));
             _ = TryRegister(state);
             await PerformTransition(TransitionOperation.Flatten, state);
             OnFlattened?.Invoke(state);
@@ -331,6 +354,12 @@ namespace WallstopStudios.DxState.State.Stack
 
         public async ValueTask FlattenAsync(string stateName)
         {
+            EnsureMainThread(nameof(FlattenAsync));
+            if (string.IsNullOrWhiteSpace(stateName))
+            {
+                throw new ArgumentException("State name must be provided.", nameof(stateName));
+            }
+
             if (!_statesByName.TryGetValue(stateName, out IState state))
             {
                 throw new ArgumentException($"State with name {stateName} does not exist");
@@ -415,6 +444,7 @@ namespace WallstopStudios.DxState.State.Stack
 
         public async ValueTask ClearAsync()
         {
+            EnsureMainThread(nameof(ClearAsync));
             await PerformTransition(TransitionOperation.Clear, null);
         }
 
@@ -464,6 +494,12 @@ namespace WallstopStudios.DxState.State.Stack
 
         public async ValueTask RemoveAsync(string stateName)
         {
+            EnsureMainThread(nameof(RemoveAsync));
+            if (string.IsNullOrWhiteSpace(stateName))
+            {
+                throw new ArgumentException("State name must be provided.", nameof(stateName));
+            }
+
             if (!_statesByName.TryGetValue(stateName, out IState stateToRemove))
             {
                 throw new ArgumentException(
@@ -476,6 +512,7 @@ namespace WallstopStudios.DxState.State.Stack
 
         public async ValueTask RemoveAsync(IState stateToRemove)
         {
+            EnsureMainThread(nameof(RemoveAsync));
             if (stateToRemove == null)
             {
                 throw new ArgumentNullException(nameof(stateToRemove));
@@ -895,6 +932,30 @@ namespace WallstopStudios.DxState.State.Stack
         private sealed class NullProgress : IProgress<float>
         {
             public void Report(float value) { }
+        }
+
+        private void EnsureMainThread(string operationName)
+        {
+            if (Thread.CurrentThread.ManagedThreadId == _mainThreadId)
+            {
+                return;
+            }
+
+            string message = $"StateStack.{operationName} must be invoked from the Unity main thread.";
+            Debug.LogError(message);
+            throw new InvalidOperationException(message);
+        }
+
+        private static void EnsureValidStateName(IState state)
+        {
+            string name = state.Name;
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                throw new ArgumentException(
+                    "States must expose a non-empty Name. Override the Name property or assign a serialized name.",
+                    nameof(state)
+                );
+            }
         }
     }
 }

@@ -50,6 +50,8 @@ namespace WallstopStudios.DxState.State.Stack.States.Systems
             {
                 _snapshot.TransitionTo(Mathf.Max(0f, _transitionTime));
             }
+#else
+            _ = _transitionTime;
 #endif
             progress.Report(1f);
             return default;

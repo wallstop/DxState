@@ -7,6 +7,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
     using Messages;
     using UnityEngine;
     using WallstopStudios.DxState.State.Stack.Diagnostics;
+    using WallstopStudios.DxState.State.Stack.Builder;
 
     public sealed class StateStackManager : DxMessageAwareSingleton<StateStackManager>
     {
@@ -59,6 +60,36 @@ namespace WallstopStudios.DxState.State.Stack.Components
         private readonly List<GameState> _registrationScratch = new List<GameState>();
         private readonly HashSet<GameState> _uniqueStateScratch = new HashSet<GameState>();
         private bool _registeredStatesDuringSetup;
+        [Header("State Graph Integration")]
+        [SerializeField]
+        private bool _applyStateGraphOnStart;
+
+        [SerializeField]
+        private Builder.StateGraphAsset _stateGraphAsset;
+
+        [SerializeField]
+        private string _stateGraphStackName;
+
+        [SerializeField]
+        private bool _forceRegisterGraphStates = true;
+
+        [SerializeField]
+        private bool _ensureGraphInitialActive = true;
+
+        private bool _graphAppliedDuringStart;
+        [Header("Diagnostics HUD Preset")]
+        [SerializeField]
+        private bool _enableDiagnosticsOverlayPreset = true;
+
+        [SerializeField]
+        private KeyCode _overlayToggleKey = KeyCode.F9;
+
+        [SerializeField]
+        private bool _overlayStartsVisible = true;
+
+        [SerializeField]
+        [Min(1)]
+        private int _overlayEventsToDisplay = 8;
 
         protected override void Awake()
         {
@@ -72,6 +103,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
             );
             ConfigureLoggingProfile();
             RegisterConfiguredStates();
+            EnsureDiagnosticsOverlay();
         }
 
         protected override void OnDestroy()
@@ -153,9 +185,22 @@ namespace WallstopStudios.DxState.State.Stack.Components
             await _stateStack.ClearAsync();
         }
 
-        private void Start()
+        protected override async void Start()
         {
+            base.Start();
+            _graphAppliedDuringStart = false;
+
+            if (_applyStateGraphOnStart)
+            {
+                await ApplyConfiguredStateGraphAsync();
+            }
+
             if (!_pushInitialStateOnStart)
+            {
+                return;
+            }
+
+            if (_graphAppliedDuringStart)
             {
                 return;
             }
@@ -201,6 +246,22 @@ namespace WallstopStudios.DxState.State.Stack.Components
             }
 
             gameObject.AddComponent<global::DxMessaging.Unity.MessagingComponent>();
+        }
+
+        private void EnsureDiagnosticsOverlay()
+        {
+            if (!_enableDiagnosticsOverlayPreset)
+            {
+                return;
+            }
+
+            StateStackDiagnosticsOverlay overlay = GetComponent<StateStackDiagnosticsOverlay>();
+            if (overlay == null)
+            {
+                overlay = gameObject.AddComponent<StateStackDiagnosticsOverlay>();
+            }
+
+            overlay.Configure(_overlayToggleKey, _overlayStartsVisible, _overlayEventsToDisplay);
         }
 
         private void RegisterConfiguredStates()
@@ -361,6 +422,103 @@ namespace WallstopStudios.DxState.State.Stack.Components
         {
             Debug.LogError($"StateStackManager configuration issue: {details}", this);
         }
+
+        private async ValueTask ApplyConfiguredStateGraphAsync()
+        {
+            if (_stateGraphAsset == null)
+            {
+                ReportConfigurationError("Apply State Graph On Start is enabled but no asset is assigned.");
+                return;
+            }
+
+            StateGraph graph;
+            try
+            {
+                graph = _stateGraphAsset.BuildGraph();
+            }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception, this);
+                return;
+            }
+
+            StateStackConfiguration configuration = ResolveGraphConfiguration(graph);
+            if (configuration == null)
+            {
+                return;
+            }
+
+            try
+            {
+                await configuration.ApplyAsync(
+                    _stateStack,
+                    _forceRegisterGraphStates,
+                    _ensureGraphInitialActive
+                );
+                _graphAppliedDuringStart = true;
+                _registeredStatesDuringSetup = true;
+
+                if (configuration.InitialState is GameState initialGameState)
+                {
+                    _initialState = initialGameState;
+                }
+            }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception, this);
+            }
+        }
+
+        private StateStackConfiguration ResolveGraphConfiguration(StateGraph graph)
+        {
+            if (graph == null)
+            {
+                return null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_stateGraphStackName))
+            {
+                if (graph.TryGetStack(_stateGraphStackName, out StateStackConfiguration configuration))
+                {
+                    return configuration;
+                }
+
+                ReportConfigurationError(
+                    $"State graph does not contain a stack named '{_stateGraphStackName}'."
+                );
+                return null;
+            }
+
+            foreach (KeyValuePair<string, StateStackConfiguration> entry in graph.Stacks)
+            {
+                if (entry.Value != null)
+                {
+                    if (string.IsNullOrEmpty(_stateGraphStackName))
+                    {
+                        _stateGraphStackName = entry.Key;
+                    }
+
+                    return entry.Value;
+                }
+            }
+
+            ReportConfigurationError("State graph asset does not contain any stack configurations.");
+            return null;
+        }
+
+#if UNITY_EDITOR
+        [ContextMenu("Apply State Graph (Play Mode)")]
+        private void ApplyStateGraphContextMenu()
+        {
+            if (!Application.isPlaying)
+            {
+                Debug.LogWarning("State graph can only be applied while in Play Mode.", this);
+                return;
+            }
+
+            _ = ApplyConfiguredStateGraphAsync();
+        }
+#endif
 
         private void ConfigureLoggingProfile()
         {

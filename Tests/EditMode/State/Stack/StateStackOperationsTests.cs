@@ -353,7 +353,7 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
             valueTask.GetAwaiter().GetResult();
         }
 
-        private static IEnumerator WaitForValueTaskWithoutConversions(ValueTask<IState> valueTask)
+        private static IEnumerator WaitForValueTaskWithoutConversions<TState>(ValueTask<TState> valueTask)
         {
             while (!valueTask.IsCompleted)
             {

@@ -203,10 +203,13 @@ namespace WallstopStudios.DxState.Extensions
                 BindingFlags.Instance | BindingFlags.NonPublic
             );
 
+            private static bool _warned;
+
             public static bool TryInvokeInline(Progress<float> progress, float value)
             {
                 if (HandlerField == null)
                 {
+                    WarnOnce();
                     return false;
                 }
 
@@ -216,7 +219,21 @@ namespace WallstopStudios.DxState.Extensions
                     return true;
                 }
 
+                WarnOnce();
                 return false;
+            }
+
+            private static void WarnOnce()
+            {
+                if (_warned)
+                {
+                    return;
+                }
+
+                _warned = true;
+                Debug.LogWarning(
+                    "DxState: Unable to invoke Progress<float> handler inline in the Editor. Falling back to standard Progress reporting."
+                );
             }
         }
 #endif

@@ -31,6 +31,14 @@ namespace WallstopStudios.DxState.State.Stack.Components
         private OverlayTab _selectedTab;
         private Vector2 _scrollPosition;
 
+        public void Configure(KeyCode toggleKey, bool startVisible, int eventsToDisplay)
+        {
+            _toggleKey = toggleKey;
+            _startVisible = startVisible;
+            _eventsToDisplay = Mathf.Max(1, eventsToDisplay);
+            _isVisible = startVisible;
+        }
+
         private void Awake()
         {
             _stateStackManager = GetComponent<StateStackManager>();

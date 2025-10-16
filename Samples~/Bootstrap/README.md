@@ -2,7 +2,7 @@
 
 This sample installs a ready-to-use GameObject (`StateStack_Bootstrap.prefab`) that demonstrates how to:
 
-- Host a `StateStackManager` on a persistent object with the new **Beginner Setup** inspector controls.
+- Host a `StateStackManager` on a persistent object with the new **Beginner Setup** inspector controls and the optional diagnostics HUD preset enabled by default.
 - Automatically ensure a `MessagingComponent` is present so stack events emit DxMessaging notifications.
 - Register `GameState` components automatically and push an initial state during startup (the prefab still ships with `StateStackBootstrapper` for legacy scenes, but the manager now exposes the same options directly).
 - Surface push/pop events through `StateStackFacade` so UI can listen via `UnityEvent<GameState>`.
@@ -12,7 +12,7 @@ This sample installs a ready-to-use GameObject (`StateStack_Bootstrap.prefab`) t
 1. Import the sample via **Window ▸ Package Manager ▸ DxState ▸ Samples**.
 2. Drag `StateStack_Bootstrap.prefab` into your scene.
 3. Add or duplicate `GameState` components as children to build your flow; the manager (or bootstrapper, if kept for backwards compatibility) will discover them on Awake and optionally push the first state.
-4. Use the attached `StateStackFacade` events to wire menu buttons without touching code, or rely on the `StateStackDiagnosticsOverlay` (toggle with F9 at runtime) to inspect the active stack and recent events.
-5. Adjust the manager's Beginner Setup or the bootstrapper options to control registration, forced overrides, or the initial state to activate.
+4. Use the attached `StateStackFacade` events to wire menu buttons without touching code, or rely on the auto-configured diagnostics overlay (toggle with F9 at runtime) to inspect the active stack and recent events.
+5. Adjust the manager's Beginner Setup, state graph options, or the bootstrapper settings to control registration, forced overrides, or the initial state to activate.
 
 The included `ExampleGameState` script shows how to extend `GameState` to react to stack transitions.
