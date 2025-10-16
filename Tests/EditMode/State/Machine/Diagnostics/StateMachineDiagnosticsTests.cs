@@ -65,6 +65,14 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Machine.Diagnostics
             Assert.AreEqual(0, idleMetrics.EnterCount);
             Assert.AreEqual(1, idleMetrics.ExitCount);
             Assert.IsTrue(idleMetrics.LastExitedUtc.HasValue);
+
+            List<StateMachineStateMetricsRecord> metricsRecords = new List<StateMachineStateMetricsRecord>();
+            diagnostics.CopyStateMetrics(metricsRecords);
+            Assert.AreEqual(2, metricsRecords.Count);
+
+            List<StateMachineDiagnosticEventRecord> eventRecords = new List<StateMachineDiagnosticEventRecord>();
+            diagnostics.CopyRecentEvents(eventRecords, 4);
+            Assert.AreEqual(1, eventRecords.Count);
         }
 
         [Test]
@@ -120,6 +128,38 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Machine.Diagnostics
             Assert.AreEqual(3, events.Count);
             Assert.IsTrue(events.Any(evt => evt.EventType == StateMachineDiagnosticEventType.TransitionDeferred));
         }
+
+        [Test]
+        public void RegistryTracksAttachedDiagnostics()
+        {
+            TestState idle = new TestState("Idle");
+            TestState active = new TestState("Active");
+            Transition<TestState> transition = new Transition<TestState>(
+                idle,
+                active,
+                new ToggleRule(false),
+                new TransitionContext(TransitionCause.RuleSatisfied)
+            );
+
+            StateMachine<TestState> machine = new StateMachine<TestState>(
+                new[] { transition },
+                idle
+            );
+
+            StateMachineDiagnostics<TestState> diagnostics = new StateMachineDiagnostics<TestState>(
+                2
+            );
+            machine.AttachDiagnostics(diagnostics);
+
+            IReadOnlyList<StateMachineDiagnosticsEntry> entries =
+                StateMachineDiagnosticsRegistry.GetEntries();
+            Assert.IsTrue(
+                entries.Any(
+                    entry =>
+                        entry.StateType == typeof(TestState)
+                        && ReferenceEquals(entry.Diagnostics, diagnostics)
+                )
+            );
         }
 
         private sealed class TestState : IStateContext<TestState>

@@ -22,6 +22,7 @@ namespace WallstopStudios.DxState.State.Machine.Component
 
             stateMachine.TransitionExecuted += diagnostics.RecordTransition;
             stateMachine.TransitionDeferred += diagnostics.RecordDeferredTransition;
+            StateMachineDiagnosticsRegistry.Register(stateMachine, diagnostics);
             return diagnostics;
         }
     }

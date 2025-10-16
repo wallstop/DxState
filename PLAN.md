@@ -27,7 +27,7 @@
    - Document best practices for using ScriptableObject vs MonoBehaviour states, including lifecycle requirements (enter/exit/tick) and dependency injection (e.g. via SerializedReference).
 
 4. [ ] Expand runtime introspection APIs for tooling integration.
-   - Add query APIs on `StateStack` and `StateMachine<T>` to retrieve transition history, branch structures, and region diagnostics for custom tooling. (In Progress – StateMachineDiagnostics now aggregates executed/deferred events, per-state enter/exit metrics, and cause counts.)
+   - Add query APIs on `StateStack` and `StateMachine<T>` to retrieve transition history, branch structures, and region diagnostics for custom tooling. (In Progress – StateMachineDiagnostics now aggregates executed/deferred events, per-state enter/exit metrics, and cause counts, and editor tooling surfaces the live registry.)
    - Emit editor events (UnityEvent or callback) when GraphView edits modify the underlying asset to allow other tools (e.g. CI lint) to react.
    - Provide serialization helpers to snapshot/restore entire hierarchical machine stacks for replay or unit testing.
 

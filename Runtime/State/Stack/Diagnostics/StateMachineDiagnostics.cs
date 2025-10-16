@@ -130,6 +130,49 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
             }
         }
 
+        public void CopyStateMetrics(List<StateMachineStateMetricsRecord> buffer)
+        {
+            if (buffer == null)
+            {
+                throw new ArgumentNullException(nameof(buffer));
+            }
+
+            lock (_gate)
+            {
+                buffer.Clear();
+                foreach (KeyValuePair<TState, StateMachineStateMetrics> entry in _stateMetricsSnapshot)
+                {
+                    buffer.Add(new StateMachineStateMetricsRecord(entry.Key, entry.Value));
+                }
+            }
+        }
+
+        public void CopyRecentEvents(List<StateMachineDiagnosticEventRecord> buffer, int maxCount)
+        {
+            if (buffer == null)
+            {
+                throw new ArgumentNullException(nameof(buffer));
+            }
+
+            if (maxCount <= 0)
+            {
+                buffer.Clear();
+                return;
+            }
+
+            lock (_gate)
+            {
+                buffer.Clear();
+                StateMachineDiagnosticEvent<TState>[] snapshot = _recentEvents.ToArray();
+                int startIndex = Math.Max(0, snapshot.Length - maxCount);
+                for (int i = startIndex; i < snapshot.Length; i++)
+                {
+                    StateMachineDiagnosticEvent<TState> entry = snapshot[i];
+                    buffer.Add(StateMachineDiagnosticEventRecord.From(entry));
+                }
+            }
+        }
+
         public void RecordTransition(TransitionExecutionContext<TState> context)
         {
             lock (_gate)
@@ -359,5 +402,64 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
         public DateTime? LastEnteredUtc { get; }
 
         public DateTime? LastExitedUtc { get; }
+    }
+
+    public readonly struct StateMachineStateMetricsRecord
+    {
+        public StateMachineStateMetricsRecord(object state, StateMachineStateMetrics metrics)
+        {
+            State = state;
+            Metrics = metrics;
+        }
+
+        public object State { get; }
+
+        public StateMachineStateMetrics Metrics { get; }
+    }
+
+    public readonly struct StateMachineDiagnosticEventRecord
+    {
+        private StateMachineDiagnosticEventRecord(
+            StateMachineDiagnosticEventType eventType,
+            DateTime timestampUtc,
+            object previousState,
+            object requestedState,
+            TransitionContext context,
+            bool hasExecutionContext
+        )
+        {
+            EventType = eventType;
+            TimestampUtc = timestampUtc;
+            PreviousState = previousState;
+            RequestedState = requestedState;
+            Context = context;
+            HasExecutionContext = hasExecutionContext;
+        }
+
+        public StateMachineDiagnosticEventType EventType { get; }
+
+        public DateTime TimestampUtc { get; }
+
+        public object PreviousState { get; }
+
+        public object RequestedState { get; }
+
+        public TransitionContext Context { get; }
+
+        public bool HasExecutionContext { get; }
+
+        internal static StateMachineDiagnosticEventRecord From<TState>(
+            StateMachineDiagnosticEvent<TState> source
+        )
+        {
+            return new StateMachineDiagnosticEventRecord(
+                source.EventType,
+                source.TimestampUtc,
+                source.PreviousState,
+                source.RequestedState,
+                source.Context,
+                source.HasExecutionContext
+            );
+        }
     }
 }
