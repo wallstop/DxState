@@ -254,7 +254,12 @@ namespace WallstopStudios.DxState.Editor.State
                 {
                     if (GUILayout.Button("Graph", EditorStyles.miniButton, GUILayout.Width(60)))
                     {
-                        StateGraphViewWindow.Open(_graphAsset, displayName);
+                        string stackKey = nameProperty != null ? nameProperty.stringValue : null;
+                        if (string.IsNullOrWhiteSpace(stackKey))
+                        {
+                            stackKey = null;
+                        }
+                        StateGraphViewWindow.Open(_graphAsset, stackKey);
                     }
                 }
 

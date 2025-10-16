@@ -8,7 +8,7 @@
    - Impact: Unlocks complex game flows (UI overlays, combat modes) without spinning up additional managers, improves usability and extendability for teams expecting HFSM/statechart capabilities similar to Animator/Playmaker.
 
 2. [ ] Ship visual authoring & debugging tools for `StateGraphAsset` and live stacks.
-   - Status: In progress — editor window offers stack editing/search, validation cues, live manager/overlay controls, graph preview with active-state highlighting, and diagnostics export; next up: full graph visualization and overlay UX polish.
+   - Status: In progress — editor window offers stack editing/search, validation cues, live manager/overlay controls, diagnostics export, graph preview, and a dedicated GraphView window; next up: richer graph interactions and overlay UX polish.
    - Observations: `Runtime/State/Stack/Builder/StateGraphAsset.cs:13` defines data containers but there is no dedicated editor (only `Editor/State/StateStackManagerEditor.cs` for runtime inspection).
    - Approach: Build a UI Toolkit/GraphView editor to author graphs, generate transitions, simulate flows, and push changes into play mode. Add a runtime inspector overlay showing queued transitions, progress, and diagnostics beyond the existing overlay.
    - Impact: Dramatically lowers onboarding cost, aligns with designer expectations (graph editing), and improves understandability/debuggability.

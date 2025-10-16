@@ -1,6 +1,7 @@
 namespace WallstopStudios.DxState.State.Stack.Components
 {
     using System.Collections.Generic;
+    using System.Text;
     using UnityEngine;
     using WallstopStudios.DxState.State.Stack.Diagnostics;
 
@@ -85,6 +86,8 @@ namespace WallstopStudios.DxState.State.Stack.Components
 
         private void DrawWindowContents(int windowId)
         {
+            DrawSummaryBar();
+
             OverlayTab newTab = (OverlayTab)GUILayout.Toolbar(
                 (int)_selectedTab,
                 new[] { "Stack", "Events", "Progress", "Metrics" }
@@ -129,6 +132,31 @@ namespace WallstopStudios.DxState.State.Stack.Components
             return state != null ? state.Name : "<none>";
         }
 
+        private void DrawSummaryBar()
+        {
+            GUILayout.BeginHorizontal(GUI.skin.box);
+            StateStackDiagnostics diagnostics = _stateStackManager.Diagnostics;
+            GUILayout.Label(
+                $"Queue: {diagnostics.TransitionQueueDepth}",
+                GUILayout.ExpandWidth(false)
+            );
+            GUILayout.Label(
+                $"Deferred (P/L): {diagnostics.PendingDeferredTransitions}/{diagnostics.LifetimeDeferredTransitions}",
+                GUILayout.ExpandWidth(false)
+            );
+            float progress = Mathf.Clamp01(_stateStackManager.Progress);
+            GUILayout.Label(
+                $"Progress {progress:P0}",
+                GUILayout.ExpandWidth(false)
+            );
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("Copy", GUILayout.Width(60f)))
+            {
+                CopyDiagnosticsToClipboard();
+            }
+            GUILayout.EndHorizontal();
+        }
+
         private void DrawStack()
         {
             IReadOnlyList<IState> stackSnapshot = _stateStackManager.Stack;
@@ -153,6 +181,12 @@ namespace WallstopStudios.DxState.State.Stack.Components
                 return;
             }
 
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Events to display", GUILayout.Width(140f));
+            float slider = GUILayout.HorizontalSlider(_eventsToDisplay, 1, 32);
+            _eventsToDisplay = Mathf.Clamp(Mathf.RoundToInt(slider), 1, 32);
+            GUILayout.EndHorizontal();
+
             for (int i = events.Count - 1; i >= events.Count - eventsToShow; i--)
             {
                 StateStackDiagnosticEvent entry = events[i];
@@ -173,7 +207,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
 
             foreach (KeyValuePair<string, float> entry in progress)
             {
-                GUILayout.Label($"{entry.Key}: {entry.Value:P0}");
+                DrawProgressBar(entry.Key, entry.Value);
             }
         }
 
@@ -183,6 +217,61 @@ namespace WallstopStudios.DxState.State.Stack.Components
             GUILayout.Label($"Transitions: {metrics.TransitionCount}");
             GUILayout.Label($"Average Duration: {metrics.AverageTransitionDurationSeconds:0.000}s");
             GUILayout.Label($"Longest Duration: {metrics.LongestTransitionDurationSeconds:0.000}s");
+        }
+
+        private void DrawProgressBar(string label, float value)
+        {
+            GUILayout.Label(label);
+            Rect rect = GUILayoutUtility.GetRect(200f, 18f);
+            GUI.Box(rect, GUIContent.none);
+            Rect fill = rect;
+            fill.width *= Mathf.Clamp01(value);
+            GUI.backgroundColor = new Color(0.2f, 0.6f, 0.9f);
+            GUI.Box(fill, GUIContent.none);
+            GUI.backgroundColor = Color.white;
+            GUI.Label(rect, $"{value:P0}", new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter });
+        }
+
+        private void CopyDiagnosticsToClipboard()
+        {
+            System.Text.StringBuilder builder = new System.Text.StringBuilder();
+            builder.AppendLine($"DxState Diagnostics ({_stateStackManager.name})");
+            builder.AppendLine($"Current: {FormatStateName(_stateStackManager.CurrentState)}");
+            builder.AppendLine($"Previous: {FormatStateName(_stateStackManager.PreviousState)}");
+            builder.AppendLine($"Stack Depth: {_stateStackManager.Stack.Count}");
+            builder.AppendLine($"Queue Depth: {_stateStackManager.Diagnostics.TransitionQueueDepth}");
+            builder.AppendLine(
+                $"Deferred Pending/Lifetime: {_stateStackManager.Diagnostics.PendingDeferredTransitions}/{_stateStackManager.Diagnostics.LifetimeDeferredTransitions}"
+            );
+            builder.AppendLine(
+                $"Progress: {Mathf.Clamp01(_stateStackManager.Progress):P0}"
+            );
+
+            IReadOnlyDictionary<string, float> progress = _stateStackManager.Diagnostics.LatestProgress;
+            if (progress.Count > 0)
+            {
+                builder.AppendLine("Progress:");
+                foreach (KeyValuePair<string, float> entry in progress)
+                {
+                    builder.AppendLine($"  {entry.Key}: {entry.Value:P0}");
+                }
+            }
+
+            IReadOnlyList<StateStackDiagnosticEvent> events = _stateStackManager.Diagnostics.Events;
+            int count = Mathf.Min(events.Count, _eventsToDisplay);
+            if (count > 0)
+            {
+                builder.AppendLine("Recent Events:");
+                for (int i = events.Count - count; i < events.Count; i++)
+                {
+                    StateStackDiagnosticEvent entry = events[i];
+                    builder.AppendLine(
+                        $"  [{entry.TimestampUtc:O}] {entry.EventType} -> {entry.CurrentState} (prev: {entry.PreviousState}, depth: {entry.StackDepth})"
+                    );
+                }
+            }
+
+            GUIUtility.systemCopyBuffer = builder.ToString();
         }
     }
 }
