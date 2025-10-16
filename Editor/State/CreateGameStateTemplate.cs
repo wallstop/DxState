@@ -1,7 +1,9 @@
 #if UNITY_EDITOR
 namespace WallstopStudios.DxState.Editor.State
 {
+    using System.IO;
     using UnityEditor;
+    using UnityEngine;
 
     internal static class CreateGameStateTemplate
     {
@@ -49,7 +51,28 @@ namespace WallstopStudios.DxState.Editor.State
         [MenuItem("Assets/Create/Wallstop Studios/DxState/Game State", priority = 30)]
         private static void CreateGameState()
         {
-            ProjectWindowUtil.CreateScriptAssetWithContent(DefaultScriptName, TemplateContent);
+            string targetFolder = ProjectWindowUtil.GetActiveFolderPath();
+            if (string.IsNullOrWhiteSpace(targetFolder))
+            {
+                targetFolder = "Assets";
+            }
+
+            string assetPath = AssetDatabase.GenerateUniqueAssetPath(Path.Combine(targetFolder, DefaultScriptName));
+            string absolutePath = Path.GetFullPath(assetPath);
+
+            string directory = Path.GetDirectoryName(absolutePath);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+            File.WriteAllText(absolutePath, TemplateContent);
+            AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceSynchronousImport);
+
+            Object createdAsset = AssetDatabase.LoadAssetAtPath<Object>(assetPath);
+            if (createdAsset != null)
+            {
+                ProjectWindowUtil.ShowCreatedAsset(createdAsset);
+            }
         }
     }
 }

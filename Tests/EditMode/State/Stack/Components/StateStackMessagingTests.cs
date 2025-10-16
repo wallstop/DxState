@@ -56,7 +56,16 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Components
 
         private static IEnumerator WaitForValueTask(ValueTask valueTask)
         {
-            Task awaited = valueTask.AsTask();
+            return WaitForValueTaskInternal(valueTask.AsTask());
+        }
+
+        private static IEnumerator WaitForValueTask<TValue>(ValueTask<TValue> valueTask)
+        {
+            return WaitForValueTaskInternal(valueTask.AsTask());
+        }
+
+        private static IEnumerator WaitForValueTaskInternal(Task awaited)
+        {
             while (!awaited.IsCompleted)
             {
                 yield return null;

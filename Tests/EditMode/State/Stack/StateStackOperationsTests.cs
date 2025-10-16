@@ -317,6 +317,11 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
             }
         }
 
+        private static IEnumerator WaitForValueTask<TValue>(ValueTask<TValue> valueTask)
+        {
+            return WaitForValueTask(valueTask, null);
+        }
+
         private static IEnumerator WaitForValueTask<T>(
             ValueTask<T> valueTask,
             Action<T> onCompleted
