@@ -445,7 +445,7 @@ namespace WallstopStudios.DxState.Editor.State
                 );
             }
 
-            public override void DeleteSelection()
+            public override EventPropagation DeleteSelection()
             {
                 List<StateNode> nodesToRemove = selection.OfType<StateNode>().ToList();
                 if (nodesToRemove.Count > 0)
@@ -458,10 +458,10 @@ namespace WallstopStudios.DxState.Editor.State
                     ApplySerializedChanges();
                     Populate(_serializedGraph, _stackProperty, _graphAsset, _configuration);
                     Highlight(_currentManager);
-                    return;
+                    return EventPropagation.Stop;
                 }
 
-                base.DeleteSelection();
+                return base.DeleteSelection();
             }
 
             private GraphViewChange OnGraphViewChanged(GraphViewChange change)
