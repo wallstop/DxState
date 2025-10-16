@@ -4,6 +4,7 @@ namespace WallstopStudios.DxState.Editor.State
     using System;
     using System.Collections.Generic;
     using System.Reflection;
+    using System.Text;
     using UnityEditor;
     using UnityEditor.IMGUI.Controls;
     using UnityEngine;
@@ -26,9 +27,12 @@ namespace WallstopStudios.DxState.Editor.State
         private GUIStyle _badgeStyle;
         private GUIStyle _stateLabelStyle;
         private GUIStyle _highlightStackStyle;
+        private GUIStyle _graphStackHeaderStyle;
+        private GUIStyle _graphNodeLabelStyle;
         private Texture2D _highlightTexture;
         private SearchField _searchField;
         private string _stackSearchTerm = string.Empty;
+        private readonly List<NodeHitTarget> _graphHitTargets = new List<NodeHitTarget>();
 
         [MenuItem("Window/Wallstop Studios/State Graph Editor", priority = 2000)]
         private static void Open()
@@ -85,7 +89,10 @@ namespace WallstopStudios.DxState.Editor.State
             SerializedProperty stacksProperty = _serializedGraph.FindProperty("_stacks");
             if (stacksProperty == null)
             {
-                EditorGUILayout.HelpBox("StateGraphAsset is missing the _stacks field.", MessageType.Error);
+                EditorGUILayout.HelpBox(
+                    "StateGraphAsset is missing the _stacks field.",
+                    MessageType.Error
+                );
                 return;
             }
 
@@ -103,12 +110,15 @@ namespace WallstopStudios.DxState.Editor.State
                     continue;
                 }
 
-                bool highlight = !string.IsNullOrEmpty(selectedStackName)
+                bool highlight =
+                    !string.IsNullOrEmpty(selectedStackName)
                     && string.Equals(displayName, selectedStackName, StringComparison.Ordinal);
 
                 DrawStackDefinition(stackProperty, displayName, i, stacksProperty, highlight);
             }
             EditorGUILayout.EndScrollView();
+
+            DrawGraphPreview(stacksProperty);
 
             EditorGUILayout.Space();
             DrawStackFooter(stacksProperty);
@@ -127,12 +137,13 @@ namespace WallstopStudios.DxState.Editor.State
         {
             EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
 
-            StateGraphAsset selected = EditorGUILayout.ObjectField(
-                "Graph Asset",
-                _graphAsset,
-                typeof(StateGraphAsset),
-                false
-            ) as StateGraphAsset;
+            StateGraphAsset selected =
+                EditorGUILayout.ObjectField(
+                    "Graph Asset",
+                    _graphAsset,
+                    typeof(StateGraphAsset),
+                    false
+                ) as StateGraphAsset;
 
             if (selected != _graphAsset)
             {
@@ -169,7 +180,11 @@ namespace WallstopStudios.DxState.Editor.State
             GUILayout.FlexibleSpace();
             if (_searchField != null)
             {
-                Rect searchRect = GUILayoutUtility.GetRect(200f, EditorGUIUtility.singleLineHeight, GUIStyle.none);
+                Rect searchRect = GUILayoutUtility.GetRect(
+                    200f,
+                    EditorGUIUtility.singleLineHeight,
+                    GUIStyle.none
+                );
                 _stackSearchTerm = _searchField.OnGUI(searchRect, _stackSearchTerm);
             }
             EditorGUILayout.EndHorizontal();
@@ -195,58 +210,88 @@ namespace WallstopStudios.DxState.Editor.State
             SerializedProperty statesProperty = stackProperty.FindPropertyRelative("_states");
 
             GUIStyle containerStyle = highlight ? _highlightStackStyle : EditorStyles.helpBox;
-            using (EditorGUILayout.VerticalScope verticalScope = new EditorGUILayout.VerticalScope(containerStyle))
+            using (
+                EditorGUILayout.VerticalScope verticalScope = new EditorGUILayout.VerticalScope(
+                    containerStyle
+                )
+            )
             {
-            EditorGUILayout.BeginHorizontal();
-            bool expanded = EditorGUILayout.Foldout(stackProperty.isExpanded, displayName, true);
-            if (expanded != stackProperty.isExpanded)
-            {
-                stackProperty.isExpanded = expanded;
-            }
-
-            if (GUILayout.Button("Remove", EditorStyles.miniButton, GUILayout.Width(70)) &&
-                EditorUtility.DisplayDialog(
-                    "Remove Stack",
-                    $"Remove '{displayName}' from the graph?",
-                    "Remove",
-                    "Cancel"
-                ))
-            {
-                stacksCollection.DeleteArrayElementAtIndex(index);
-                EditorGUILayout.EndHorizontal();
-                return;
-            }
-
-            EditorGUILayout.EndHorizontal();
-
-            if (!stackProperty.isExpanded)
-            {
-                return;
-            }
-
-            EditorGUI.indentLevel++;
-            EditorGUILayout.PropertyField(nameProperty, new GUIContent("Name"));
-            EditorGUILayout.Space();
-
-            EditorGUILayout.LabelField("States", EditorStyles.boldLabel);
-            for (int i = 0; i < statesProperty.arraySize; i++)
-            {
-                SerializedProperty stateReference = statesProperty.GetArrayElementAtIndex(i);
-                DrawStateReference(stateReference, statesProperty, i);
-            }
-
-            if (GUILayout.Button("Add State Reference"))
-            {
-                statesProperty.arraySize++;
-                SerializedProperty newReference = statesProperty.GetArrayElementAtIndex(statesProperty.arraySize - 1);
-                SerializedProperty setAsInitial = newReference.FindPropertyRelative("_setAsInitial");
-                if (setAsInitial != null)
+                EditorGUILayout.BeginHorizontal();
+                bool hasIssues = HasStateReferenceIssues(statesProperty);
+                GUIContent headerContent = hasIssues
+                    ? BuildHeaderContent(
+                        displayName,
+                        "Stack contains missing or invalid state references.",
+                        "console.erroricon.sml"
+                    )
+                    : new GUIContent(displayName);
+                bool expanded = EditorGUILayout.Foldout(
+                    stackProperty.isExpanded,
+                    headerContent,
+                    true
+                );
+                if (expanded != stackProperty.isExpanded)
                 {
-                    setAsInitial.boolValue = statesProperty.arraySize == 1;
+                    stackProperty.isExpanded = expanded;
                 }
-            }
 
-            EditorGUI.indentLevel--;
+                if (
+                    GUILayout.Button("Remove", EditorStyles.miniButton, GUILayout.Width(70))
+                    && EditorUtility.DisplayDialog(
+                        "Remove Stack",
+                        $"Remove '{displayName}' from the graph?",
+                        "Remove",
+                        "Cancel"
+                    )
+                )
+                {
+                    stacksCollection.DeleteArrayElementAtIndex(index);
+                    EditorGUILayout.EndHorizontal();
+                    return;
+                }
+
+                using (new EditorGUI.DisabledScope(_graphAsset == null))
+                {
+                    if (GUILayout.Button("Graph", EditorStyles.miniButton, GUILayout.Width(60)))
+                    {
+                        StateGraphViewWindow.Open(_graphAsset, displayName);
+                    }
+                }
+
+                EditorGUILayout.EndHorizontal();
+
+                if (!stackProperty.isExpanded)
+                {
+                    return;
+                }
+
+                EditorGUI.indentLevel++;
+                EditorGUILayout.PropertyField(nameProperty, new GUIContent("Name"));
+                EditorGUILayout.Space();
+
+                EditorGUILayout.LabelField("States", EditorStyles.boldLabel);
+                for (int i = 0; i < statesProperty.arraySize; i++)
+                {
+                    SerializedProperty stateReference = statesProperty.GetArrayElementAtIndex(i);
+                    DrawStateReference(stateReference, statesProperty, i);
+                }
+
+                if (GUILayout.Button("Add State Reference"))
+                {
+                    statesProperty.arraySize++;
+                    SerializedProperty newReference = statesProperty.GetArrayElementAtIndex(
+                        statesProperty.arraySize - 1
+                    );
+                    SerializedProperty setAsInitial = newReference.FindPropertyRelative(
+                        "_setAsInitial"
+                    );
+                    if (setAsInitial != null)
+                    {
+                        setAsInitial.boolValue = statesProperty.arraySize == 1;
+                    }
+                }
+
+                EditorGUI.indentLevel--;
             }
         }
 
@@ -257,13 +302,44 @@ namespace WallstopStudios.DxState.Editor.State
         )
         {
             SerializedProperty stateProperty = stateReference.FindPropertyRelative("_state");
-            SerializedProperty initialProperty = stateReference.FindPropertyRelative("_setAsInitial");
+            SerializedProperty initialProperty = stateReference.FindPropertyRelative(
+                "_setAsInitial"
+            );
 
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.PropertyField(stateProperty, GUIContent.none);
 
+            if (!IsValidStateReference(stateProperty) || stateProperty.objectReferenceValue == null)
+            {
+                GUILayout.Label(
+                    EditorGUIUtility.IconContent("console.warnicon.sml"),
+                    GUILayout.Width(20f)
+                );
+            }
+
+            UnityEngine.Object stateObject = stateProperty != null
+                ? stateProperty.objectReferenceValue
+                : null;
+
+            using (new EditorGUI.DisabledScope(stateObject == null))
+            {
+                if (GUILayout.Button(EditorGUIUtility.IconContent("d_ViewToolZoom"), GUILayout.Width(22f)))
+                {
+                    EditorGUIUtility.PingObject(stateObject);
+                }
+
+                if (GUILayout.Button(EditorGUIUtility.IconContent("d_UnityEditor.InspectorWindow"), GUILayout.Width(22f)))
+                {
+                    Selection.activeObject = stateObject;
+                }
+            }
+
             bool isInitial = initialProperty != null && initialProperty.boolValue;
-            bool newIsInitial = EditorGUILayout.ToggleLeft("Initial", isInitial, GUILayout.Width(70));
+            bool newIsInitial = EditorGUILayout.ToggleLeft(
+                "Initial",
+                isInitial,
+                GUILayout.Width(70)
+            );
             if (initialProperty != null && newIsInitial != isInitial)
             {
                 initialProperty.boolValue = newIsInitial;
@@ -282,7 +358,10 @@ namespace WallstopStudios.DxState.Editor.State
                 statesCollection.MoveArrayElement(index, index - 1);
             }
 
-            if (GUILayout.Button("▼", GUILayout.Width(24)) && index < statesCollection.arraySize - 1)
+            if (
+                GUILayout.Button("▼", GUILayout.Width(24))
+                && index < statesCollection.arraySize - 1
+            )
             {
                 statesCollection.MoveArrayElement(index, index + 1);
             }
@@ -309,7 +388,9 @@ namespace WallstopStudios.DxState.Editor.State
             if (GUILayout.Button("Add Stack", GUILayout.Width(120)))
             {
                 stacksProperty.arraySize++;
-                SerializedProperty newStack = stacksProperty.GetArrayElementAtIndex(stacksProperty.arraySize - 1);
+                SerializedProperty newStack = stacksProperty.GetArrayElementAtIndex(
+                    stacksProperty.arraySize - 1
+                );
                 SerializedProperty nameProperty = newStack.FindPropertyRelative("_name");
                 SerializedProperty statesProperty = newStack.FindPropertyRelative("_states");
                 if (nameProperty != null)
@@ -324,15 +405,203 @@ namespace WallstopStudios.DxState.Editor.State
             EditorGUILayout.EndHorizontal();
         }
 
+        private void DrawGraphPreview(SerializedProperty stacksProperty)
+        {
+            const float previewHeight = 240f;
+            Rect previewRect = GUILayoutUtility.GetRect(
+                0f,
+                previewHeight,
+                GUILayout.ExpandWidth(true)
+            );
+            if (Event.current.type == EventType.Repaint)
+            {
+                EditorGUI.DrawRect(previewRect, new Color(0.12f, 0.12f, 0.16f, 1f));
+            }
+
+            Rect paddingRect = new Rect(
+                previewRect.x + 8f,
+                previewRect.y + 8f,
+                previewRect.width - 16f,
+                previewRect.height - 16f
+            );
+
+            Rect headerRect = new Rect(paddingRect.x, paddingRect.y - 22f, paddingRect.width, 20f);
+            GUI.Label(headerRect, "Graph Preview", _headerStyle);
+            _graphHitTargets.Clear();
+
+            List<(SerializedProperty stackProperty, string displayName)> visibleStacks =
+                new List<(SerializedProperty, string)>();
+            for (int i = 0; i < stacksProperty.arraySize; i++)
+            {
+                SerializedProperty stackProperty = stacksProperty.GetArrayElementAtIndex(i);
+                string displayName = ResolveStackDisplayName(stackProperty, i);
+                if (!ShouldDisplayStack(displayName))
+                {
+                    continue;
+                }
+
+                visibleStacks.Add((stackProperty, displayName));
+            }
+
+            if (visibleStacks.Count == 0)
+            {
+                Rect emptyRect = new Rect(
+                    paddingRect.x,
+                    paddingRect.center.y - 10f,
+                    paddingRect.width,
+                    20f
+                );
+                GUI.Label(emptyRect, "No stacks to preview", _stateLabelStyle);
+                return;
+            }
+
+            float columnWidth = Mathf.Max(160f, paddingRect.width / visibleStacks.Count);
+            float totalWidth = columnWidth * visibleStacks.Count;
+            float offsetX = paddingRect.x + Mathf.Max(0f, (paddingRect.width - totalWidth) * 0.5f);
+            float columnHeight = paddingRect.height;
+
+            Handles.BeginGUI();
+            Handles.color = new Color(1f, 1f, 1f, 0.2f);
+
+            for (int columnIndex = 0; columnIndex < visibleStacks.Count; columnIndex++)
+            {
+                SerializedProperty stackProperty = visibleStacks[columnIndex].stackProperty;
+                string displayName = visibleStacks[columnIndex].displayName;
+
+                Rect columnRect = new Rect(
+                    offsetX + columnIndex * columnWidth,
+                    paddingRect.y,
+                    columnWidth,
+                    columnHeight
+                );
+
+                Rect localHeaderRect = new Rect(columnRect.x, columnRect.y, columnRect.width, 22f);
+                EditorGUI.DrawRect(localHeaderRect, new Color(0.18f, 0.22f, 0.28f, 0.95f));
+                GUI.Label(localHeaderRect, displayName, _graphStackHeaderStyle);
+
+                SerializedProperty statesProperty = stackProperty.FindPropertyRelative("_states");
+                if (statesProperty == null || statesProperty.arraySize == 0)
+                {
+                    Rect emptyStateRect = new Rect(
+                        columnRect.x + 12f,
+                        localHeaderRect.yMax + 8f,
+                        columnRect.width - 24f,
+                        20f
+                    );
+                    EditorGUI.DrawRect(emptyStateRect, new Color(0.25f, 0.25f, 0.28f, 1f));
+                    GUI.Label(emptyStateRect, "(empty)", _graphNodeLabelStyle);
+                    continue;
+                }
+
+                float availableHeight = columnRect.height - localHeaderRect.height - 14f;
+                float nodeHeight = 26f;
+                float spacing = ResolveVerticalSpacing(
+                    statesProperty.arraySize,
+                    availableHeight,
+                    nodeHeight
+                );
+                float startY = localHeaderRect.yMax + 8f;
+
+                for (int i = 0; i < statesProperty.arraySize; i++)
+                {
+                    SerializedProperty reference = statesProperty.GetArrayElementAtIndex(i);
+                    SerializedProperty stateProperty = reference.FindPropertyRelative("_state");
+                    SerializedProperty initialProperty = reference.FindPropertyRelative(
+                        "_setAsInitial"
+                    );
+                    bool isInitial = initialProperty != null && initialProperty.boolValue;
+
+                    UnityEngine.Object stateObject =
+                        stateProperty != null ? stateProperty.objectReferenceValue : null;
+                    string label = stateObject != null ? stateObject.name : "<missing>";
+
+                    float y = startY + i * (nodeHeight + spacing);
+                    Rect nodeRect = new Rect(
+                        columnRect.x + 12f,
+                        y,
+                        columnRect.width - 24f,
+                        nodeHeight
+                    );
+
+                    Color nodeColor = ResolveNodeColor(stateObject, isInitial);
+                    EditorGUI.DrawRect(nodeRect, nodeColor);
+                    GUI.Label(nodeRect, label, _graphNodeLabelStyle);
+
+                    if (stateObject != null)
+                    {
+                        EditorGUIUtility.AddCursorRect(nodeRect, MouseCursor.Link);
+                        _graphHitTargets.Add(
+                            new NodeHitTarget { Rect = nodeRect, State = stateObject }
+                        );
+                    }
+
+                    if (i < statesProperty.arraySize - 1)
+                    {
+                        SerializedProperty nextReference = statesProperty.GetArrayElementAtIndex(
+                            i + 1
+                        );
+                        SerializedProperty nextStateProperty = nextReference.FindPropertyRelative(
+                            "_state"
+                        );
+                        UnityEngine.Object nextStateObject =
+                            nextStateProperty != null
+                                ? nextStateProperty.objectReferenceValue
+                                : null;
+                        if (stateObject != null || nextStateObject != null)
+                        {
+                            Rect nextRect = new Rect(
+                                columnRect.x + 12f,
+                                startY + (i + 1) * (nodeHeight + spacing),
+                                columnRect.width - 24f,
+                                nodeHeight
+                            );
+                            DrawConnector(nodeRect, nextRect, i % 2 == 0);
+                        }
+                    }
+                }
+            }
+
+            Handles.EndGUI();
+            HandleGraphPreviewEvents();
+        }
+
+        private void HandleGraphPreviewEvents()
+        {
+            Event evt = Event.current;
+            if (evt.type != EventType.MouseDown || evt.button != 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < _graphHitTargets.Count; i++)
+            {
+                NodeHitTarget target = _graphHitTargets[i];
+                if (target.State == null)
+                {
+                    continue;
+                }
+
+                if (!target.Rect.Contains(evt.mousePosition))
+                {
+                    continue;
+                }
+
+                EditorGUIUtility.PingObject(target.State);
+                evt.Use();
+                break;
+            }
+        }
+
         private void DrawManagerPanel()
         {
             EditorGUILayout.LabelField("Runtime Debugging", EditorStyles.boldLabel);
-            _targetManager = EditorGUILayout.ObjectField(
-                "State Stack Manager",
-                _targetManager,
-                typeof(StateStackManager),
-                true
-            ) as StateStackManager;
+            _targetManager =
+                EditorGUILayout.ObjectField(
+                    "State Stack Manager",
+                    _targetManager,
+                    typeof(StateStackManager),
+                    true
+                ) as StateStackManager;
 
             if (_targetManager == null)
             {
@@ -373,6 +642,36 @@ namespace WallstopStudios.DxState.Editor.State
                 _applyEnsureInitialActive
             );
 
+            StateStackDiagnosticsOverlay overlayComponent =
+                _targetManager.GetComponent<StateStackDiagnosticsOverlay>();
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                bool overlayEnabled = overlayComponent != null;
+                bool newOverlayEnabled = EditorGUILayout.Toggle(
+                    new GUIContent("Diagnostics Overlay"),
+                    overlayEnabled
+                );
+
+                if (newOverlayEnabled != overlayEnabled)
+                {
+                    SetDiagnosticsOverlayEnabled(newOverlayEnabled);
+                    overlayComponent = _targetManager.GetComponent<StateStackDiagnosticsOverlay>();
+                }
+
+                using (new EditorGUI.DisabledScope(!overlayEnabled))
+                {
+                    if (GUILayout.Button("Focus Overlay", GUILayout.Width(120)))
+                    {
+                        EditorGUIUtility.PingObject(overlayComponent);
+                    }
+                }
+            }
+
+            if (overlayComponent != null)
+            {
+                DrawOverlayControls(overlayComponent);
+            }
+
             EditorGUILayout.Space();
             DrawStatusSummary();
 
@@ -390,6 +689,8 @@ namespace WallstopStudios.DxState.Editor.State
 
             EditorGUILayout.Space();
             DrawLiveStackView();
+            EditorGUILayout.Space();
+            DrawRecentEvents();
         }
 
         private void DrawLiveStackView()
@@ -411,6 +712,45 @@ namespace WallstopStudios.DxState.Editor.State
                 EditorGUILayout.LabelField(stateName);
             }
             EditorGUI.indentLevel--;
+        }
+
+        private void DrawRecentEvents()
+        {
+            StateStackDiagnostics diagnostics = _targetManager.Diagnostics;
+            if (diagnostics == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<StateStackDiagnosticEvent> events = diagnostics.Events;
+            if (events == null || events.Count == 0)
+            {
+                EditorGUILayout.LabelField("No recent events.");
+                return;
+            }
+
+            EditorGUILayout.LabelField("Recent Events", EditorStyles.boldLabel);
+            int displayed = 0;
+            EditorGUI.indentLevel++;
+            for (int i = events.Count - 1; i >= 0 && displayed < 8; i--)
+            {
+                StateStackDiagnosticEvent entry = events[i];
+                string label =
+                    $"[{entry.TimestampUtc:HH:mm:ss}] {entry.EventType} → {entry.CurrentState} (prev: {entry.PreviousState})";
+                EditorGUILayout.LabelField(label, EditorStyles.miniLabel);
+                displayed++;
+            }
+            EditorGUI.indentLevel--;
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                GUILayout.FlexibleSpace();
+                if (GUILayout.Button("Copy Diagnostics", GUILayout.Width(150)))
+                {
+                    GUIUtility.systemCopyBuffer = BuildDiagnosticsClipboard();
+                    ShowNotification(new GUIContent("Diagnostics copied"));
+                }
+            }
         }
 
         private void ApplyGraphToManager()
@@ -447,11 +787,10 @@ namespace WallstopStudios.DxState.Editor.State
 
             try
             {
-                configuration.ApplyAsync(
-                    stateStack,
-                    _applyForceRegister,
-                    _applyEnsureInitialActive
-                ).GetAwaiter().GetResult();
+                configuration
+                    .ApplyAsync(stateStack, _applyForceRegister, _applyEnsureInitialActive)
+                    .GetAwaiter()
+                    .GetResult();
                 EditorUtility.SetDirty(_targetManager);
                 Repaint();
             }
@@ -478,7 +817,9 @@ namespace WallstopStudios.DxState.Editor.State
                 return null;
             }
 
-            string stackName = _stackNames[Mathf.Clamp(_selectedStackIndex, 0, _stackNames.Length - 1)];
+            string stackName = _stackNames[
+                Mathf.Clamp(_selectedStackIndex, 0, _stackNames.Length - 1)
+            ];
             if (graph.TryGetStack(stackName, out StateStackConfiguration configuration))
             {
                 return configuration;
@@ -668,11 +1009,233 @@ namespace WallstopStudios.DxState.Editor.State
             return state != null ? state.Name : "<none>";
         }
 
+        private string BuildDiagnosticsClipboard()
+        {
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine($"StateStack Diagnostics Snapshot ({_targetManager.name})");
+            builder.AppendLine($"Current: {FormatStateName(_targetManager.CurrentState)}");
+            builder.AppendLine($"Previous: {FormatStateName(_targetManager.PreviousState)}");
+            builder.AppendLine($"Stack Depth: {_targetManager.Stack.Count}");
+
+            StateStackDiagnostics diagnostics = _targetManager.Diagnostics;
+            if (diagnostics != null)
+            {
+                builder.AppendLine(
+                    $"Queue Depth: {diagnostics.TransitionQueueDepth}, Deferred Pending: {diagnostics.PendingDeferredTransitions}, Deferred Lifetime: {diagnostics.LifetimeDeferredTransitions}"
+                );
+                builder.AppendLine(
+                    $"Average Duration: {diagnostics.AverageTransitionDuration:F3}s, Longest: {diagnostics.LongestTransitionDuration:F3}s"
+                );
+
+                IReadOnlyList<StateStackDiagnosticEvent> events = diagnostics.Events;
+                int count = Mathf.Min(events?.Count ?? 0, 10);
+                if (count > 0)
+                {
+                    builder.AppendLine("Recent Events:");
+                    for (int i = events.Count - count; i < events.Count; i++)
+                    {
+                        StateStackDiagnosticEvent evt = events[i];
+                        builder.AppendLine(
+                            $"  [{evt.TimestampUtc:O}] {evt.EventType} → {evt.CurrentState} (prev: {evt.PreviousState}, depth: {evt.StackDepth})"
+                        );
+                    }
+                }
+            }
+
+            return builder.ToString();
+        }
+
+        private void DrawOverlayControls(StateStackDiagnosticsOverlay overlay)
+        {
+            SerializedObject overlaySerialized = new SerializedObject(overlay);
+            overlaySerialized.Update();
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Overlay Settings", EditorStyles.boldLabel);
+            EditorGUI.indentLevel++;
+            EditorGUILayout.PropertyField(
+                overlaySerialized.FindProperty("_toggleKey"),
+                new GUIContent("Toggle Key")
+            );
+            EditorGUILayout.PropertyField(
+                overlaySerialized.FindProperty("_startVisible"),
+                new GUIContent("Start Visible")
+            );
+            EditorGUILayout.PropertyField(
+                overlaySerialized.FindProperty("_eventsToDisplay"),
+                new GUIContent("Events To Display")
+            );
+            EditorGUI.indentLevel--;
+
+            if (overlaySerialized.ApplyModifiedProperties())
+            {
+                EditorUtility.SetDirty(overlay);
+            }
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                GUILayout.FlexibleSpace();
+                if (GUILayout.Button("Dump Diagnostics", GUILayout.Width(140)))
+                {
+                    DumpDiagnosticsToConsole();
+                }
+            }
+        }
+
         private void DrawStatusBadge(string text, Color color)
         {
-            Rect rect = GUILayoutUtility.GetRect(80f, EditorGUIUtility.singleLineHeight + 6f, _badgeStyle, GUILayout.ExpandWidth(false));
+            Rect rect = GUILayoutUtility.GetRect(
+                80f,
+                EditorGUIUtility.singleLineHeight + 6f,
+                _badgeStyle,
+                GUILayout.ExpandWidth(false)
+            );
             EditorGUI.DrawRect(rect, color);
             EditorGUI.LabelField(rect, text, _badgeStyle);
+        }
+
+        private void DumpDiagnosticsToConsole()
+        {
+            if (_targetManager == null)
+            {
+                return;
+            }
+
+            StateStackDiagnostics diagnostics = _targetManager.Diagnostics;
+            if (diagnostics == null)
+            {
+                Debug.LogWarning(
+                    "StateStackManager does not have diagnostics enabled.",
+                    _targetManager
+                );
+                return;
+            }
+
+            System.Text.StringBuilder builder = new System.Text.StringBuilder();
+            builder.AppendLine($"StateStack Diagnostics ({_targetManager.name})");
+            builder.AppendLine($"Current: {FormatStateName(_targetManager.CurrentState)}");
+            builder.AppendLine($"Previous: {FormatStateName(_targetManager.PreviousState)}");
+            builder.AppendLine($"Stack Depth: {_targetManager.Stack.Count}");
+            builder.AppendLine(
+                $"Queue Depth: {diagnostics.TransitionQueueDepth}, Deferred Pending: {diagnostics.PendingDeferredTransitions}, Deferred Lifetime: {diagnostics.LifetimeDeferredTransitions}"
+            );
+            builder.AppendLine(
+                $"Average Duration: {diagnostics.AverageTransitionDuration:F3}s, Longest: {diagnostics.LongestTransitionDuration:F3}s"
+            );
+
+            IReadOnlyList<StateStackDiagnosticEvent> events = diagnostics.Events;
+            int count = Mathf.Min(events.Count, 10);
+            if (count > 0)
+            {
+                builder.AppendLine("Recent Events:");
+                for (int i = events.Count - count; i < events.Count; i++)
+                {
+                    StateStackDiagnosticEvent evt = events[i];
+                    builder.AppendLine(
+                        $"  [{evt.TimestampUtc:O}] {evt.EventType} → {evt.CurrentState} (prev: {evt.PreviousState}, depth: {evt.StackDepth})"
+                    );
+                }
+            }
+
+            Debug.Log(builder.ToString(), _targetManager);
+        }
+
+        private Color ResolveNodeColor(UnityEngine.Object stateObject, bool isInitial)
+        {
+            Color baseColor = isInitial
+                ? new Color(0.25f, 0.6f, 0.35f, 0.95f)
+                : new Color(0.27f, 0.3f, 0.36f, 0.95f);
+
+            if (_targetManager == null || stateObject == null)
+            {
+                return baseColor;
+            }
+
+            if (stateObject is IState state)
+            {
+                IReadOnlyList<IState> activeStack = _targetManager.Stack;
+                for (int i = 0; i < activeStack.Count; i++)
+                {
+                    IState activeState = activeStack[i];
+                    if (ReferenceEquals(activeState, state))
+                    {
+                        if (i == activeStack.Count - 1)
+                        {
+                            return new Color(0.45f, 0.75f, 0.95f, 0.95f);
+                        }
+
+                        return new Color(0.35f, 0.45f, 0.75f, 0.95f);
+                    }
+                }
+            }
+
+            return baseColor;
+        }
+
+        private float ResolveVerticalSpacing(int count, float availableHeight, float nodeHeight)
+        {
+            if (count <= 1)
+            {
+                return 0f;
+            }
+
+            float spacing = (availableHeight - count * nodeHeight) / (count - 1);
+            return Mathf.Max(6f, spacing);
+        }
+
+        private void DrawConnector(Rect fromRect, Rect toRect, bool alternate)
+        {
+            Vector3 start = new Vector2(fromRect.center.x, fromRect.yMax);
+            Vector3 end = new Vector2(toRect.center.x, toRect.yMin);
+            float verticalDistance = Mathf.Abs(end.y - start.y);
+            float controlOffset = Mathf.Max(18f, verticalDistance * 0.4f);
+            float horizontalOffset = alternate ? 12f : -12f;
+            Vector3 startTangent = start + new Vector3(horizontalOffset, controlOffset);
+            Vector3 endTangent = end - new Vector3(horizontalOffset, controlOffset);
+            Handles.DrawBezier(
+                start,
+                end,
+                startTangent,
+                endTangent,
+                new Color(1f, 1f, 1f, 0.35f),
+                null,
+                2f
+            );
+            Vector3 arrowHead = end + new Vector3(0f, 4f, 0f);
+            Handles.DrawAAPolyLine(2f, end, arrowHead + new Vector3(-4f, -8f, 0f));
+            Handles.DrawAAPolyLine(2f, end, arrowHead + new Vector3(4f, -8f, 0f));
+        }
+
+        private void SetDiagnosticsOverlayEnabled(bool enable)
+        {
+            if (_targetManager == null)
+            {
+                return;
+            }
+
+            StateStackDiagnosticsOverlay overlay =
+                _targetManager.GetComponent<StateStackDiagnosticsOverlay>();
+            if (enable)
+            {
+                if (overlay != null)
+                {
+                    return;
+                }
+
+                Undo.RecordObject(_targetManager.gameObject, "Enable Diagnostics Overlay");
+                overlay = Undo.AddComponent<StateStackDiagnosticsOverlay>(
+                    _targetManager.gameObject
+                );
+                EditorUtility.SetDirty(_targetManager.gameObject);
+                return;
+            }
+
+            if (overlay == null)
+            {
+                return;
+            }
+
+            Undo.DestroyObjectImmediate(overlay);
         }
 
         private void EnsureStyles()
@@ -682,7 +1245,7 @@ namespace WallstopStudios.DxState.Editor.State
                 _headerStyle = new GUIStyle(EditorStyles.boldLabel)
                 {
                     fontSize = 14,
-                    fontStyle = FontStyle.Bold
+                    fontStyle = FontStyle.Bold,
                 };
             }
 
@@ -690,7 +1253,7 @@ namespace WallstopStudios.DxState.Editor.State
             {
                 _stateLabelStyle = new GUIStyle(EditorStyles.label)
                 {
-                    fontStyle = FontStyle.Italic
+                    fontStyle = FontStyle.Italic,
                 };
             }
 
@@ -699,7 +1262,7 @@ namespace WallstopStudios.DxState.Editor.State
                 _badgeStyle = new GUIStyle(EditorStyles.miniBoldLabel)
                 {
                     alignment = TextAnchor.MiddleCenter,
-                    padding = new RectOffset(6, 6, 2, 2)
+                    padding = new RectOffset(6, 6, 2, 2),
                 };
                 _badgeStyle.normal.textColor = Color.white;
             }
@@ -711,6 +1274,24 @@ namespace WallstopStudios.DxState.Editor.State
                 _highlightStackStyle.normal.background = _highlightTexture;
             }
 
+            if (_graphStackHeaderStyle == null)
+            {
+                _graphStackHeaderStyle = new GUIStyle(EditorStyles.boldLabel)
+                {
+                    alignment = TextAnchor.MiddleCenter,
+                    fontSize = 12,
+                };
+            }
+
+            if (_graphNodeLabelStyle == null)
+            {
+                _graphNodeLabelStyle = new GUIStyle(EditorStyles.miniBoldLabel)
+                {
+                    alignment = TextAnchor.MiddleCenter,
+                };
+                _graphNodeLabelStyle.normal.textColor = Color.white;
+            }
+
             if (_searchField == null)
             {
                 _searchField = new SearchField();
@@ -719,16 +1300,16 @@ namespace WallstopStudios.DxState.Editor.State
 
         private Texture2D CreateSolidTexture(Color color)
         {
-            Texture2D texture = new Texture2D(1, 1)
-            {
-                hideFlags = HideFlags.HideAndDontSave
-            };
+            Texture2D texture = new Texture2D(1, 1) { hideFlags = HideFlags.HideAndDontSave };
             texture.SetPixel(0, 0, color);
             texture.Apply();
             return texture;
         }
 
-        private static void EnsureSingleInitialState(SerializedProperty statesProperty, int selectedIndex)
+        private static void EnsureSingleInitialState(
+            SerializedProperty statesProperty,
+            int selectedIndex
+        )
         {
             for (int i = 0; i < statesProperty.arraySize; i++)
             {
@@ -769,6 +1350,51 @@ namespace WallstopStudios.DxState.Editor.State
             {
                 fallbackFlag.boolValue = true;
             }
+        }
+
+        private static bool IsValidStateReference(SerializedProperty stateProperty)
+        {
+            if (stateProperty == null)
+            {
+                return false;
+            }
+
+            UnityEngine.Object obj = stateProperty.objectReferenceValue;
+            return obj == null || obj is IState;
+        }
+
+        private static bool HasStateReferenceIssues(SerializedProperty statesProperty)
+        {
+            if (statesProperty == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < statesProperty.arraySize; i++)
+            {
+                SerializedProperty reference = statesProperty.GetArrayElementAtIndex(i);
+                SerializedProperty stateProperty = reference.FindPropertyRelative("_state");
+                if (!IsValidStateReference(stateProperty) || stateProperty.objectReferenceValue == null)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static GUIContent BuildHeaderContent(string title, string tooltip, string iconName)
+        {
+            GUIContent icon = EditorGUIUtility.IconContent(iconName);
+            return icon != null
+                ? new GUIContent(title, icon.image, tooltip)
+                : new GUIContent(title, tooltip);
+        }
+
+        private struct NodeHitTarget
+        {
+            public Rect Rect;
+            public UnityEngine.Object State;
         }
     }
 }
