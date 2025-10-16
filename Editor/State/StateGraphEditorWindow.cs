@@ -8,6 +8,7 @@ namespace WallstopStudios.DxState.Editor.State
     using UnityEditor;
     using UnityEditor.IMGUI.Controls;
     using UnityEngine;
+    using WallstopStudios.DxState.State.Machine;
     using WallstopStudios.DxState.State.Stack;
     using WallstopStudios.DxState.State.Stack.Builder;
     using WallstopStudios.DxState.State.Stack.Components;
@@ -208,6 +209,7 @@ namespace WallstopStudios.DxState.Editor.State
         {
             SerializedProperty nameProperty = stackProperty.FindPropertyRelative("_name");
             SerializedProperty statesProperty = stackProperty.FindPropertyRelative("_states");
+            SerializedProperty transitionsProperty = stackProperty.FindPropertyRelative("_transitions");
 
             GUIStyle containerStyle = highlight ? _highlightStackStyle : EditorStyles.helpBox;
             using (
@@ -296,7 +298,203 @@ namespace WallstopStudios.DxState.Editor.State
                     }
                 }
 
+                EditorGUILayout.Space();
+                DrawTransitionsSection(transitionsProperty, statesProperty, displayName);
+
                 EditorGUI.indentLevel--;
+            }
+        }
+
+        private void DrawTransitionsSection(
+            SerializedProperty transitionsProperty,
+            SerializedProperty statesProperty,
+            string stackName
+        )
+        {
+            EditorGUILayout.LabelField("Transitions", EditorStyles.boldLabel);
+
+            int stateCount = statesProperty != null ? statesProperty.arraySize : 0;
+            if (stateCount == 0)
+            {
+                EditorGUILayout.HelpBox(
+                    "Add states to this stack to enable transitions.",
+                    MessageType.Info
+                );
+                return;
+            }
+
+            EnsureTransitionsPropertyInitialized(transitionsProperty);
+
+            string[] stateNames = BuildStateNameArray(statesProperty);
+
+            for (int i = 0; i < transitionsProperty.arraySize; i++)
+            {
+                SerializedProperty transitionProperty = transitionsProperty.GetArrayElementAtIndex(i);
+                DrawTransitionMetadataRow(transitionProperty, stateNames, i, transitionsProperty);
+            }
+
+            if (GUILayout.Button("Add Transition"))
+            {
+                transitionsProperty.arraySize++;
+                SerializedProperty newEntry = transitionsProperty.GetArrayElementAtIndex(
+                    transitionsProperty.arraySize - 1
+                );
+                InitializeTransitionDefaults(newEntry);
+            }
+        }
+
+        private void DrawTransitionMetadataRow(
+            SerializedProperty transitionProperty,
+            string[] stateNames,
+            int index,
+            SerializedProperty collection
+        )
+        {
+            SerializedProperty fromIndexProperty = transitionProperty.FindPropertyRelative("_fromIndex");
+            SerializedProperty toIndexProperty = transitionProperty.FindPropertyRelative("_toIndex");
+            SerializedProperty labelProperty = transitionProperty.FindPropertyRelative("_label");
+            SerializedProperty tooltipProperty = transitionProperty.FindPropertyRelative("_tooltip");
+            SerializedProperty causeProperty = transitionProperty.FindPropertyRelative("_cause");
+            SerializedProperty flagsProperty = transitionProperty.FindPropertyRelative("_flags");
+
+            int currentFrom = Mathf.Clamp(fromIndexProperty != null ? fromIndexProperty.intValue : -1, -1, stateNames.Length - 1);
+            int currentTo = Mathf.Clamp(toIndexProperty != null ? toIndexProperty.intValue : -1, -1, stateNames.Length - 1);
+
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField($"Transition {index + 1}", EditorStyles.boldLabel);
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("Remove", EditorStyles.miniButton, GUILayout.Width(70)))
+            {
+                collection.DeleteArrayElementAtIndex(index);
+                EditorGUILayout.EndHorizontal();
+                EditorGUILayout.EndVertical();
+                return;
+            }
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("From", GUILayout.Width(40f));
+            int newFrom = EditorGUILayout.Popup(currentFrom, stateNames);
+            if (fromIndexProperty != null && newFrom != currentFrom)
+            {
+                fromIndexProperty.intValue = newFrom;
+            }
+
+            EditorGUILayout.LabelField("To", GUILayout.Width(30f));
+            int newTo = EditorGUILayout.Popup(currentTo, stateNames);
+            if (toIndexProperty != null && newTo != currentTo)
+            {
+                toIndexProperty.intValue = newTo;
+            }
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.PropertyField(labelProperty, new GUIContent("Label"));
+            EditorGUILayout.PropertyField(tooltipProperty, new GUIContent("Tooltip"));
+
+            TransitionCause cause = causeProperty != null
+                ? (TransitionCause)causeProperty.intValue
+                : TransitionCause.Unspecified;
+            TransitionCause newCause = (TransitionCause)EditorGUILayout.EnumPopup(
+                "Cause",
+                cause
+            );
+            if (causeProperty != null && newCause != cause)
+            {
+                causeProperty.intValue = (int)newCause;
+            }
+
+            TransitionFlags flags = flagsProperty != null
+                ? (TransitionFlags)flagsProperty.intValue
+                : TransitionFlags.None;
+            TransitionFlags newFlags = (TransitionFlags)EditorGUILayout.EnumFlagsField(
+                "Flags",
+                flags
+            );
+            if (flagsProperty != null && newFlags != flags)
+            {
+                flagsProperty.intValue = (int)newFlags;
+            }
+
+            EditorGUILayout.EndVertical();
+        }
+
+        private void EnsureTransitionsPropertyInitialized(SerializedProperty transitionsProperty)
+        {
+            if (transitionsProperty == null)
+            {
+                return;
+            }
+
+            if (transitionsProperty.arraySize < 0)
+            {
+                transitionsProperty.arraySize = 0;
+            }
+        }
+
+        private static string[] BuildStateNameArray(SerializedProperty statesProperty)
+        {
+            int count = statesProperty != null ? statesProperty.arraySize : 0;
+            if (count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            string[] names = new string[count];
+            for (int i = 0; i < count; i++)
+            {
+                SerializedProperty reference = statesProperty.GetArrayElementAtIndex(i);
+                SerializedProperty stateProperty = reference.FindPropertyRelative("_state");
+                UnityEngine.Object stateObject = stateProperty != null
+                    ? stateProperty.objectReferenceValue
+                    : null;
+                names[i] = stateObject != null ? stateObject.name : $"State {i + 1}";
+            }
+
+            return names;
+        }
+
+        private static void InitializeTransitionDefaults(SerializedProperty transitionProperty)
+        {
+            if (transitionProperty == null)
+            {
+                return;
+            }
+
+            SerializedProperty fromIndex = transitionProperty.FindPropertyRelative("_fromIndex");
+            if (fromIndex != null)
+            {
+                fromIndex.intValue = 0;
+            }
+
+            SerializedProperty toIndex = transitionProperty.FindPropertyRelative("_toIndex");
+            if (toIndex != null)
+            {
+                toIndex.intValue = 0;
+            }
+
+            SerializedProperty label = transitionProperty.FindPropertyRelative("_label");
+            if (label != null)
+            {
+                label.stringValue = string.Empty;
+            }
+
+            SerializedProperty tooltip = transitionProperty.FindPropertyRelative("_tooltip");
+            if (tooltip != null)
+            {
+                tooltip.stringValue = string.Empty;
+            }
+
+            SerializedProperty cause = transitionProperty.FindPropertyRelative("_cause");
+            if (cause != null)
+            {
+                cause.intValue = (int)TransitionCause.Unspecified;
+            }
+
+            SerializedProperty flags = transitionProperty.FindPropertyRelative("_flags");
+            if (flags != null)
+            {
+                flags.intValue = (int)TransitionFlags.None;
             }
         }
 
@@ -398,6 +596,9 @@ namespace WallstopStudios.DxState.Editor.State
                 );
                 SerializedProperty nameProperty = newStack.FindPropertyRelative("_name");
                 SerializedProperty statesProperty = newStack.FindPropertyRelative("_states");
+                SerializedProperty transitionsProperty = newStack.FindPropertyRelative(
+                    "_transitions"
+                );
                 if (nameProperty != null)
                 {
                     nameProperty.stringValue = "New Stack";
@@ -405,6 +606,10 @@ namespace WallstopStudios.DxState.Editor.State
                 if (statesProperty != null)
                 {
                     statesProperty.arraySize = 0;
+                }
+                if (transitionsProperty != null)
+                {
+                    transitionsProperty.arraySize = 0;
                 }
             }
             EditorGUILayout.EndHorizontal();

@@ -200,7 +200,7 @@ DxState is Wallstop Studios' state management package for Unity 2021.3, combinin
 - In the Editor, the custom `StateStackManager` inspector surfaces the live stack, registered states (with push/flatten controls), diagnostics, and a one-click clear button while in play mode.
 - Open **Window ▸ Wallstop Studios ▸ DxState ▸ State Stack Debugger** to monitor stacks in a dedicated editor window, push new states by name, and inspect diagnostics without selecting the manager object.
 - Drop the `StateStackDiagnosticsOverlay` MonoBehaviour on the same object as `StateStackManager` (included in the sample prefab) to toggle an in-game overlay that lists the active stack and recent events (default hotkey: `F9`).
-  Use the toolbar buttons to cycle between floating/docked presets or lock the overlay to avoid accidental drags, switch to the timeline tab to visualize recent transitions as a sparkline, and use the event-type filters to focus on the signals you care about.
+  Use the toolbar buttons to cycle between floating/docked presets or lock the overlay to avoid accidental drags, pause/step through diagnostics snapshots, pin states you care about, switch to the timeline tab to visualize recent transitions as a sparkline, and apply event-type filters to focus on actionable entries.
 - Utility helpers such as `AwaitWithProgress` now support cancellation tokens while driving progress updates via a lightweight, pooled driver.
 
 ## State Machine Authoring
@@ -221,6 +221,7 @@ DxState is Wallstop Studios' state management package for Unity 2021.3, combinin
 - `ComponentStateTransition` composes rule delegates with `IStateComponent.ShouldEnter`, so tag-gated components or custom predicates can block transitions even if the machine rule allows entry.
 - Prefer encapsulating component states behind `IStateComponent` implementations—MonoBehaviour subclasses inherit the helper base `StateComponent`, while plain C# states can implement the interface directly for tests and headless contexts.
 - Designers can build the same graphs visually with `StateGraphAsset` (Assets ▸ Create ▸ Wallstop Studios ▸ DxState ▸ State Graph). Each stack definition records a name, ordered `IState` references, and which entry is active by default. Call `StateGraphAsset.BuildGraph()` at runtime to obtain `StateStackConfiguration` instances and apply them to your stacks. The State Graph view now supports multiple labeled transitions between nodes with editable causes/flags and tooltips.
+  The State Graph editor window exposes the same transition metadata, allowing you to author labels, tooltips, and transition causes directly alongside the state list.
 - The State Graph view now supports multiple labelled transitions per pair of states; select an edge to edit its label, tooltip, cause, and flags, or drag between nodes to create new metadata-backed transitions.
 - The edit-mode suites `StateMachineBuilderTests`, `StateComponentTests`, and `StateStackDiagnosticsTests` cover builder usage, component gating, and deferred queue reporting.
 

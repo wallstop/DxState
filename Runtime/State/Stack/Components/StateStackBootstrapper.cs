@@ -157,7 +157,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
             if (!_uniqueStateScratch.Add(candidate))
             {
                 Debug.LogError(
-                    $"Duplicate GameState reference detected by StateStackBootstrapper: '{candidate.name}'.",
+                    "Duplicate GameState reference detected by StateStackBootstrapper.",
                     candidate
                 );
                 return;

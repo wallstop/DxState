@@ -25,6 +25,8 @@ namespace WallstopStudios.DxState.State.Stack.Components
         public event Action<IState, IState> StatePushed;
         public event Action<IState, IState> StatePopped;
         public event Action<IState, IState> TransitionCompleted;
+        public event Action<int> TransitionQueueDepthChanged;
+        public event Action<StateStack.DeferredTransitionMetrics> DeferredTransitionMetricsChanged;
 
         private readonly StateStack _stateStack = new();
         [Header("Beginner Setup")]
@@ -104,6 +106,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
             ConfigureLoggingProfile();
             RegisterConfiguredStates();
             EnsureDiagnosticsOverlay();
+            NotifyQueueDepth();
         }
 
         protected override void OnDestroy()
@@ -405,6 +408,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
             _stateStack.OnFlattened += HandleStateFlattened;
             _stateStack.OnTransitionProgress += HandleTransitionProgress;
             _stateStack.OnStateManuallyRemoved += HandleStateManuallyRemoved;
+            _stateStack.OnTransitionQueueDepthChanged += HandleQueueDepthChanged;
         }
 
         private void UnsubscribeFromStateStackEvents()
@@ -416,6 +420,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
             _stateStack.OnFlattened -= HandleStateFlattened;
             _stateStack.OnTransitionProgress -= HandleTransitionProgress;
             _stateStack.OnStateManuallyRemoved -= HandleStateManuallyRemoved;
+            _stateStack.OnTransitionQueueDepthChanged -= HandleQueueDepthChanged;
         }
 
         private void HandleStatePushed(IState previous, IState current)
@@ -461,6 +466,12 @@ namespace WallstopStudios.DxState.State.Stack.Components
         {
             StateManuallyRemovedMessage message = new StateManuallyRemovedMessage(state);
             message.EmitUntargeted();
+        }
+
+        private void HandleQueueDepthChanged(int depth)
+        {
+            TransitionQueueDepthChanged?.Invoke(depth);
+            DeferredTransitionMetricsChanged?.Invoke(_stateStack.CurrentDeferredMetrics);
         }
 
         private void ReportConfigurationError(string details)

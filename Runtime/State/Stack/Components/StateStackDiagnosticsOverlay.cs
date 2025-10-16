@@ -63,6 +63,8 @@ namespace WallstopStudios.DxState.State.Stack.Components
         private int _pausedEventCursor;
         private readonly List<StateStackDiagnosticEvent> _timelineBuffer =
             new List<StateStackDiagnosticEvent>();
+        private readonly HashSet<string> _pinnedStates =
+            new HashSet<string>(StringComparer.Ordinal);
 
         public void Configure(KeyCode toggleKey, bool startVisible, int eventsToDisplay)
         {
@@ -193,6 +195,19 @@ namespace WallstopStudios.DxState.State.Stack.Components
             );
             float progress = Mathf.Clamp01(_stateStackManager.Progress);
             GUILayout.Label($"Progress {progress:P0}", GUILayout.ExpandWidth(false));
+            if (_pinnedStates.Count > 0)
+            {
+                GUILayout.Label("Pinned:", GUILayout.Width(50f));
+                foreach (string pinned in _pinnedStates)
+                {
+                    float pinnedProgress = 0f;
+                    diagnostics.LatestProgress.TryGetValue(pinned, out pinnedProgress);
+                    GUILayout.Label(
+                        $"{pinned} ({pinnedProgress:P0})",
+                        GUILayout.ExpandWidth(false)
+                    );
+                }
+            }
             GUILayout.FlexibleSpace();
             if (GUILayout.Button(_layoutMode.ToString(), GUILayout.Width(100f)))
             {
@@ -226,12 +241,33 @@ namespace WallstopStudios.DxState.State.Stack.Components
             IReadOnlyList<IState> stackSnapshot = GetStackSource();
             GUILayout.Label($"Stack Depth: {stackSnapshot.Count}");
             GUILayout.Label($"Current State: {FormatStateName(_stateStackManager.CurrentState)}");
+            if (_pinnedStates.Count > 0)
+            {
+                GUILayout.Label("Pinned States:");
+                foreach (string pinned in _pinnedStates)
+                {
+                    GUILayout.Label($"• {pinned}", EditorStyles.miniLabel);
+                }
+            }
             GUILayout.Space(4f);
 
             for (int i = stackSnapshot.Count - 1; i >= 0; i--)
             {
                 IState state = stackSnapshot[i];
-                GUILayout.Label($"[{stackSnapshot.Count - 1 - i}] {FormatStateName(state)}");
+                string formattedName = FormatStateName(state);
+                GUILayout.BeginHorizontal();
+                GUILayout.Label(
+                    $"[{stackSnapshot.Count - 1 - i}] {formattedName}",
+                    GUILayout.ExpandWidth(true)
+                );
+                bool isPinned = !string.IsNullOrEmpty(formattedName)
+                    && _pinnedStates.Contains(formattedName);
+                string pinLabel = isPinned ? "★" : "☆";
+                if (GUILayout.Button(pinLabel, GUILayout.Width(24f)))
+                {
+                    TogglePinState(formattedName, isPinned);
+                }
+                GUILayout.EndHorizontal();
             }
         }
 
@@ -657,6 +693,23 @@ namespace WallstopStudios.DxState.State.Stack.Components
             }
 
             _pausedMetrics = diagnostics.GetMetricsSnapshot();
+        }
+
+        private void TogglePinState(string stateName, bool currentlyPinned)
+        {
+            if (string.IsNullOrEmpty(stateName) || stateName == "<none>")
+            {
+                return;
+            }
+
+            if (currentlyPinned)
+            {
+                _pinnedStates.Remove(stateName);
+            }
+            else
+            {
+                _pinnedStates.Add(stateName);
+            }
         }
 
         private void CopyDiagnosticsToClipboard()
