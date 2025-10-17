@@ -29,8 +29,8 @@
 4. [ ] Expand runtime introspection APIs for tooling integration.
    - Add query APIs on `StateStack` and `StateMachine<T>` to retrieve transition history, branch structures, and region diagnostics for custom tooling. (Completed – new `TransitionHistory`/`CopyTransitionHistory` surfaces on both stacks and machines expose recent transitions, while `ActiveRegions` helpers surface hierarchical activity.)
    - Provide editor-level configuration (ScriptableObject singleton) for diagnostics tooling to persist view preferences across sessions. (Completed – StateMachineDiagnosticsSettings now drives the diagnostics window.)
-   - Emit editor events (UnityEvent or callback) when GraphView edits modify the underlying asset to allow other tools (e.g. CI lint) to react.
-   - Provide serialization helpers to snapshot/restore entire hierarchical machine stacks for replay or unit testing.
+   - Emit editor events (UnityEvent or callback) when GraphView edits modify the underlying asset to allow other tools (e.g. CI lint) to react. (Completed – `StateGraphViewWindow.GraphAssetChanged` now fires whenever serialized graph data changes.)
+   - Provide serialization helpers to snapshot/restore entire hierarchical machine stacks for replay or unit testing. (Completed – `StateStackSnapshot` captures/restores stack contents, and state machines expose transition histories/regions for replay tooling.)
 
 ## Medium Priority
 5. [ ] Extend state machine performance options.

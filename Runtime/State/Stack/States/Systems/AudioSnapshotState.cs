@@ -4,9 +4,7 @@ namespace WallstopStudios.DxState.State.Stack.States.Systems
     using System.Collections.Generic;
     using System.Threading.Tasks;
     using UnityEngine;
-#if UGS_AUDIO
     using UnityEngine.Audio;
-#endif
 
     [Serializable]
     public sealed class AudioSnapshotState : IState
@@ -20,10 +18,8 @@ namespace WallstopStudios.DxState.State.Stack.States.Systems
         [SerializeField]
         private float _transitionTime = 0.25f;
 
-#if UGS_AUDIO
         [SerializeField]
         private AudioMixerSnapshot _snapshot;
-#endif
 
         public AudioSnapshotState(string name)
         {
@@ -45,14 +41,10 @@ namespace WallstopStudios.DxState.State.Stack.States.Systems
         )
             where TProgress : IProgress<float>
         {
-#if UGS_AUDIO
             if (_snapshot != null)
             {
                 _snapshot.TransitionTo(Mathf.Max(0f, _transitionTime));
             }
-#else
-            _ = _transitionTime;
-#endif
             progress.Report(1f);
             return default;
         }

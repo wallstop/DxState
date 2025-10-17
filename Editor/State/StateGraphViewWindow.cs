@@ -20,6 +20,13 @@ namespace WallstopStudios.DxState.Editor.State
 
     public sealed class StateGraphViewWindow : EditorWindow
     {
+        public static event Action<StateGraphAsset> GraphAssetChanged;
+
+        internal static void RaiseGraphAssetChanged(StateGraphAsset asset)
+        {
+            GraphAssetChanged?.Invoke(asset);
+        }
+
         private StateGraphAsset _graphAsset;
         private SerializedObject _graphSerialized;
         private SerializedProperty _stacksProperty;
@@ -1216,6 +1223,7 @@ namespace WallstopStudios.DxState.Editor.State
                 _metadataFallback = Array.Empty<StateGraphAsset.StateTransitionMetadata>();
                 Repopulate();
                 Highlight(_currentManager);
+                RaiseGraphAssetChanged(_graphAsset);
                 GraphModified?.Invoke();
                 TemplateApplied?.Invoke(result);
             }
@@ -1233,6 +1241,7 @@ namespace WallstopStudios.DxState.Editor.State
                     ApplySerializedChanges();
                     Repopulate();
                     Highlight(_currentManager);
+                    RaiseGraphAssetChanged(_graphAsset);
                     return EventPropagation.Stop;
                 }
 
@@ -1636,6 +1645,7 @@ namespace WallstopStudios.DxState.Editor.State
                 {
                     EditorUtility.SetDirty(_graphAsset);
                     AssetDatabase.SaveAssets();
+                    StateGraphViewWindow.RaiseGraphAssetChanged(_graphAsset);
                 }
                 GraphModified?.Invoke();
             }

@@ -198,6 +198,7 @@ DxState is Wallstop Studios' state management package for Unity 2021.3, combinin
 - `StateMachineDiagnostics<T>` now captures recent executed/deferred transitions, aggregates cause counts, and tracks per-state enter/exit moments so editor tooling can render lightweight insights without instrumenting production code.
 - Open **Window ▸ Wallstop Studios ▸ DxState ▸ State Machine Diagnostics** to inspect registered machines, transition causes, per-state metrics, and recent events; adjust defaults under **Project Settings ▸ Wallstop Studios ▸ DxState ▸ Diagnostics**.
 - In the Editor, the custom `StateStackManager` inspector surfaces the live stack, registered states (with push/flatten controls), diagnostics, and a one-click clear button while in play mode.
+- Subscribe to `StateGraphViewWindow.GraphAssetChanged` when building editor extensions or CI hooks that react to authoring edits.
 
 ## Further Reading
 
@@ -224,6 +225,7 @@ DxState is Wallstop Studios' state management package for Unity 2021.3, combinin
 
 - `ComponentStateTransition` composes rule delegates with `IStateComponent.ShouldEnter`, so tag-gated components or custom predicates can block transitions even if the machine rule allows entry.
 - Prefer encapsulating component states behind `IStateComponent` implementations—MonoBehaviour subclasses inherit the helper base `StateComponent`, while plain C# states can implement the interface directly for tests and headless contexts.
+- `StateMachine<T>` now exposes `TransitionHistory`, `ActiveRegions`, and helper methods such as `CopyTransitionHistory` and `TryGetActiveHierarchicalState`, making it easy to build diagnostics overlays or replay tests without instrumenting the machine.
 - Designers can build the same graphs visually with `StateGraphAsset` (Assets ▸ Create ▸ Wallstop Studios ▸ DxState ▸ State Graph). Each stack definition records a name, ordered `IState` references, and which entry is active by default. Call `StateGraphAsset.BuildGraph()` at runtime to obtain `StateStackConfiguration` instances and apply them to your stacks. The State Graph view now supports multiple labeled transitions between nodes with editable causes/flags and tooltips.
   The State Graph editor window exposes the same transition metadata, allowing you to author labels, tooltips, and transition causes directly alongside the state list.
 - The State Graph view now supports multiple labelled transitions per pair of states; select an edge to edit its label, tooltip, cause, and flags, or drag between nodes to create new metadata-backed transitions.
