@@ -4,6 +4,7 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
     using System.Collections.Generic;
     using System.Collections.ObjectModel;
     using UnityEngine;
+    using WallstopStudios.UnityHelpers.Core.DataStructure;
 
     public enum StateStackDiagnosticEventType
     {
@@ -53,7 +54,7 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
         private const string NullStateName = "<null>";
 
         private readonly StateStack _stateStack;
-        private readonly List<StateStackDiagnosticEvent> _events;
+        private readonly CyclicBuffer<StateStackDiagnosticEvent> _events;
         private readonly int _maxEventCount;
         private readonly bool _logEvents;
         private readonly Dictionary<string, float> _latestProgress;
@@ -74,7 +75,7 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
             _stateStack = stateStack;
             _maxEventCount = Math.Max(1, maxEventCount);
             _logEvents = logEvents;
-            _events = new List<StateStackDiagnosticEvent>(_maxEventCount);
+            _events = new CyclicBuffer<StateStackDiagnosticEvent>(_maxEventCount);
             _latestProgress = new Dictionary<string, float>(StringComparer.Ordinal);
             _latestProgressView = new ReadOnlyDictionary<string, float>(_latestProgress);
 
@@ -221,11 +222,6 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
                 _stateStack.Stack.Count,
                 DateTime.UtcNow
             );
-
-            if (_events.Count == _maxEventCount)
-            {
-                _events.RemoveAt(0);
-            }
 
             _events.Add(diagnosticEvent);
 

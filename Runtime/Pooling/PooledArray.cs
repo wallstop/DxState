@@ -1,18 +1,19 @@
 namespace WallstopStudios.DxState.Pooling
 {
     using System;
+    using WallstopStudios.UnityHelpers.Utils;
 
     public readonly struct PooledArray<T> : IDisposable
     {
         private readonly T[] _buffer;
-        private readonly bool _shouldClear;
-        private readonly bool _shouldReturn;
+        private readonly PooledResource<T[]> _lease;
+        private readonly bool _hasLease;
 
-        private PooledArray(T[] buffer, bool shouldClear, bool shouldReturn)
+        private PooledArray(T[] buffer, PooledResource<T[]> lease, bool hasLease)
         {
             _buffer = buffer;
-            _shouldClear = shouldClear;
-            _shouldReturn = shouldReturn;
+            _lease = lease;
+            _hasLease = hasLease;
         }
 
         public T[] Array => _buffer;
@@ -21,29 +22,27 @@ namespace WallstopStudios.DxState.Pooling
         {
             if (minimumLength <= 0)
             {
-                return new PooledArray<T>(System.Array.Empty<T>(), false, false);
+                return new PooledArray<T>(System.Array.Empty<T>(), default, false);
             }
 
-            T[] buffer = clear
-                ? WallstopArrayPool<T>.Rent(minimumLength, clear: true)
-                : WallstopFastArrayPool<T>.Rent(minimumLength);
-            return new PooledArray<T>(buffer, clear, true);
+            if (clear)
+            {
+                PooledResource<T[]> lease = WallstopArrayPool<T>.Get(minimumLength, out T[] buffer);
+                return new PooledArray<T>(buffer, lease, true);
+            }
+
+            PooledResource<T[]> fastLease = WallstopFastArrayPool<T>.Get(minimumLength, out T[] fastBuffer);
+            return new PooledArray<T>(fastBuffer, fastLease, true);
         }
 
         public void Dispose()
         {
-            if (!_shouldReturn)
+            if (!_hasLease)
             {
                 return;
             }
 
-            if (_shouldClear)
-            {
-                WallstopArrayPool<T>.Return(_buffer, clear: true);
-                return;
-            }
-
-            WallstopFastArrayPool<T>.Return(_buffer);
+            _lease.Dispose();
         }
     }
 }

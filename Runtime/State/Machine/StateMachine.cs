@@ -7,16 +7,13 @@ namespace WallstopStudios.DxState.State.Machine
 #if DXSTATE_PROFILING
     using Unity.Profiling;
 #endif
-    using WallstopStudios.DxState.Pooling;
-#if DXSTATE_PROFILING
-    using Unity.Profiling;
-#endif
+    using WallstopStudios.UnityHelpers.Utils;
 
     public sealed class StateMachine<T> : IDisposable
     {
         private readonly Dictionary<T, List<Transition<T>>> _states;
         private readonly List<Transition<T>> _globalTransitions;
-        private readonly PooledQueue<PendingTransition> _pendingTransitions;
+        private readonly Queue<PendingTransition> _pendingTransitions;
         private readonly TransitionHistoryBuffer _transitionHistory;
         private readonly List<PooledTransitionRule> _pooledTransitionRules;
 #if DXSTATE_PROFILING
@@ -58,7 +55,7 @@ namespace WallstopStudios.DxState.State.Machine
 
             _states = new Dictionary<T, List<Transition<T>>>();
             _globalTransitions = new List<Transition<T>>();
-            _pendingTransitions = new PooledQueue<PendingTransition>();
+            _pendingTransitions = new Queue<PendingTransition>();
             _transitionHistory = new TransitionHistoryBuffer(DefaultTransitionHistoryCapacity);
             _pooledTransitionRules = new List<PooledTransitionRule>();
             HashSet<T> discoveredStates = new HashSet<T>();
@@ -459,7 +456,7 @@ namespace WallstopStudios.DxState.State.Machine
                 }
                 _pooledTransitionRules.Clear();
             }
-            _pendingTransitions.Dispose();
+            _pendingTransitions.Clear();
             _transitionHistory.Dispose();
         }
 
@@ -635,19 +632,18 @@ namespace WallstopStudios.DxState.State.Machine
             private int _count;
             private int _startIndex;
             private bool _disposed;
+            private PooledResource<TransitionExecutionContext<T>[]> _bufferLease;
+            private bool _hasLease;
 
             public TransitionHistoryBuffer(int capacity)
             {
                 Capacity = capacity <= 0 ? DefaultTransitionHistoryCapacity : capacity;
                 Capacity = Math.Max(1, Capacity);
-                _buffer = WallstopArrayPool<TransitionExecutionContext<T>>.Rent(
+                _bufferLease = WallstopArrayPool<TransitionExecutionContext<T>>.Get(
                     Capacity,
-                    clear: false
+                    out _buffer
                 );
-                if (_buffer.Length < Capacity)
-                {
-                    _buffer = new TransitionExecutionContext<T>[Capacity];
-                }
+                _hasLease = true;
                 _count = 0;
                 _startIndex = 0;
             }
@@ -718,13 +714,11 @@ namespace WallstopStudios.DxState.State.Machine
                 }
 
                 _disposed = true;
-                if (_buffer != null)
+                if (_hasLease)
                 {
-                    WallstopArrayPool<TransitionExecutionContext<T>>.Return(
-                        _buffer,
-                        clear: true
-                    );
-                    _buffer = null;
+                    _bufferLease.Dispose();
+                    _buffer = Array.Empty<TransitionExecutionContext<T>>();
+                    _hasLease = false;
                 }
                 _count = 0;
                 _startIndex = 0;

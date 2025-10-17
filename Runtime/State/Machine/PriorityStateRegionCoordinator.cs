@@ -2,11 +2,11 @@ namespace WallstopStudios.DxState.State.Machine
 {
     using System;
     using System.Collections.Generic;
+    using WallstopStudios.UnityHelpers.Utils;
 
     public sealed class PriorityStateRegionCoordinator : IStateRegionCoordinator
     {
         private readonly IComparer<IStateRegion> _comparer;
-        private readonly List<IStateRegion> _buffer;
 
         public PriorityStateRegionCoordinator()
             : this(null) { }
@@ -14,7 +14,6 @@ namespace WallstopStudios.DxState.State.Machine
         public PriorityStateRegionCoordinator(IComparer<IStateRegion> comparer)
         {
             _comparer = comparer ?? new PriorityComparer();
-            _buffer = new List<IStateRegion>();
         }
 
         public void ActivateRegions(IReadOnlyList<IStateRegion> regions, TransitionContext context)
@@ -43,7 +42,11 @@ namespace WallstopStudios.DxState.State.Machine
                 return;
             }
 
-            _buffer.Clear();
+            using PooledResource<List<IStateRegion>> pooled = Buffers<IStateRegion>.GetList(
+                regions.Count,
+                out List<IStateRegion> buffer
+            );
+
             for (int i = 0; i < regions.Count; i++)
             {
                 IStateRegion region = regions[i];
@@ -52,23 +55,23 @@ namespace WallstopStudios.DxState.State.Machine
                     continue;
                 }
 
-                _buffer.Add(region);
+                buffer.Add(region);
             }
 
-            _buffer.Sort(_comparer);
+            buffer.Sort(_comparer);
 
             if (reverse)
             {
-                for (int i = _buffer.Count - 1; i >= 0; i--)
+                for (int i = buffer.Count - 1; i >= 0; i--)
                 {
-                    action(_buffer[i]);
+                    action(buffer[i]);
                 }
                 return;
             }
 
-            for (int i = 0; i < _buffer.Count; i++)
+            for (int i = 0; i < buffer.Count; i++)
             {
-                action(_buffer[i]);
+                action(buffer[i]);
             }
         }
 

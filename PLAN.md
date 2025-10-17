@@ -5,7 +5,7 @@
 - [x] Authoring surfaces: StateGraph editor with validation/search, live manager controls, diagnostics overlay integration, GraphView window with runtime highlighting.
 
 ## High Priority
-1. [ ] Enrich GraphView authoring and debugging for complex state machines.
+1. [x] Enrich GraphView authoring and debugging for complex state machines.
    - Add edge-level metadata (transition cause, guard summary, context flags) and tooltips sourced from `TransitionContext` to mirror non-linear logic. (Completed – GraphView persistently stores labeled transitions with editable metadata.)
    - Support multi-edge branching: allow linking a node to multiple successors with labeled connections, including drag-to-create edges that inject new transition definitions back into the asset. (Completed – GraphView edges create persistent metadata entries and render editable labels/tooltips.)
    - Provide inline metrics overlays (transition count, average duration, last triggered timestamp) by streaming data from `StateStackDiagnostics`; visually animate active edges. (Completed – GraphView nodes now surface diagnostics and active transitions pulse along highlighted edges.)
@@ -34,8 +34,11 @@
 
 ## Medium Priority
 5. [ ] Extend state machine performance options.
-   - Wallstop buffer integration (In Progress – transition queues/history rent from Wallstop pools and scoped list helpers reduce removal allocations; evaluate remaining hot paths.)
-     - Swap transient collections in `StateMachine<T>` and `StateStack` over to `WallstopArrayPool`/`WallstopFastArrayPool` where appropriate (transition queues, history buffers, temporary lists). (In Progress – queues/history updated; assess additional caches.)
+   - Wallstop buffer integration (In Progress – transition queues/history rent from Wallstop pools, removal paths use pooled lists, and diagnostics now rely on cyclic buffers; evaluate remaining hot paths.)
+     - 2024-11-26: Kicking off audit to migrate pending transition queues in `StateMachine<T>`, `StateStack`, and trigger machines onto `Buffers<T>.Queue` leases and to remove bespoke pools around transition rules/completion sources in favor of UnityHelpers.
+     - Swap transient collections in `StateMachine<T>` and `StateStack` over to `WallstopArrayPool`/`WallstopFastArrayPool` where appropriate (transition queues, history buffers, temporary lists).
+       - Avoid duplicating pooling helpers; rely on Unity Helpers (`Buffers<T>`, etc.) wherever possible to keep maintenance lower.
+       - (In Progress – queues/history updated, removal paths use pooled lists, diagnostics rely on cyclic buffers; audit remaining caches.)
      - [x] Introduce scoped helpers that rent/release buffers during transition execution and update loops without changing the public API.
      - Document pool expectations (e.g. lifetime, thread restrictions) so users understand the trade-offs. (Completed – README and authoring docs now cover disposal/usage guidance.)
    - Transition rule pooling (In Progress – pooled transition rules now rent from the shared pool, builder helpers cover delegates and rule structs, and machines release rentals on dispose; evaluate runtime diagnostics before marking complete.)

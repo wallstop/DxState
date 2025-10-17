@@ -136,7 +136,7 @@ namespace WallstopStudios.DxState.State.Stack
         private readonly StateTransitionProgressReporter _masterProgress;
         private static readonly IProgress<float> _noOpProgress = new NullProgress();
         private TransitionCompletionSource _transitionWaiter;
-        private readonly PooledQueue<QueuedTransition> _transitionQueue;
+        private readonly Queue<QueuedTransition> _transitionQueue;
         private readonly TransitionHistoryBuffer _transitionHistory;
 #if DXSTATE_PROFILING
         private static readonly ProfilerMarker _transitionMarker = new ProfilerMarker("DxState.StateStack.Transition");
@@ -157,7 +157,7 @@ namespace WallstopStudios.DxState.State.Stack
             _masterProgress = new StateTransitionProgressReporter(this);
             _mainThreadId = Thread.CurrentThread.ManagedThreadId;
             _transitionHistory = new TransitionHistoryBuffer(DefaultTransitionHistoryCapacity);
-            _transitionQueue = new PooledQueue<QueuedTransition>();
+            _transitionQueue = new Queue<QueuedTransition>();
         }
 
         private bool _disposed;
@@ -176,7 +176,7 @@ namespace WallstopStudios.DxState.State.Stack
             }
 
             _disposed = true;
-            _transitionQueue.Dispose();
+            _transitionQueue.Clear();
             _transitionHistory.Dispose();
         }
 
@@ -1489,19 +1489,18 @@ namespace WallstopStudios.DxState.State.Stack
             private int _count;
             private int _startIndex;
             private bool _disposed;
+            private PooledResource<StateStackTransitionRecord[]> _bufferLease;
+            private bool _hasLease;
 
             public TransitionHistoryBuffer(int capacity)
             {
                 Capacity = capacity <= 0 ? DefaultTransitionHistoryCapacity : capacity;
                 Capacity = Math.Max(1, Capacity);
-                _buffer = WallstopArrayPool<StateStackTransitionRecord>.Rent(
+                _bufferLease = WallstopArrayPool<StateStackTransitionRecord>.Get(
                     Capacity,
-                    clear: false
+                    out _buffer
                 );
-                if (_buffer.Length < Capacity)
-                {
-                    _buffer = new StateStackTransitionRecord[Capacity];
-                }
+                _hasLease = true;
                 _count = 0;
                 _startIndex = 0;
             }
@@ -1572,10 +1571,11 @@ namespace WallstopStudios.DxState.State.Stack
                 }
 
                 _disposed = true;
-                if (_buffer != null)
+                if (_hasLease)
                 {
-                    WallstopArrayPool<StateStackTransitionRecord>.Return(_buffer, clear: true);
-                    _buffer = null;
+                    _bufferLease.Dispose();
+                    _buffer = Array.Empty<StateStackTransitionRecord>();
+                    _hasLease = false;
                 }
                 _count = 0;
                 _startIndex = 0;
