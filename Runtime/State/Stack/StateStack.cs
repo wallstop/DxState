@@ -136,8 +136,6 @@ namespace WallstopStudios.DxState.State.Stack
         private static readonly IProgress<float> _noOpProgress = new NullProgress();
         private TransitionCompletionSource _transitionWaiter;
         private readonly PooledQueue<QueuedTransition> _transitionQueue;
-        private readonly List<IState> _removalPreviousBuffer = new List<IState>();
-        private readonly List<IState> _removalNextBuffer = new List<IState>();
         private readonly TransitionHistoryBuffer _transitionHistory;
 #if DXSTATE_PROFILING
         private static readonly ProfilerMarker _transitionMarker = new ProfilerMarker("DxState.StateStack.Transition");
@@ -724,30 +722,29 @@ namespace WallstopStudios.DxState.State.Stack
 
             bool wasCurrentActiveState = removalIndex == _stack.Count - 1;
 
-            List<IState> previousStatesBuffer = _removalPreviousBuffer;
-            previousStatesBuffer.Clear();
-            for (int i = 0; i < removalIndex; i++)
+            PooledList<IState> previousStatesBuffer = PooledList<IState>.Rent(removalIndex);
+            PooledList<IState> nextStatesBuffer = PooledList<IState>.Rent(_stack.Count - removalIndex);
+            try
             {
-                previousStatesBuffer.Add(_stack[i]);
-            }
-
-            List<IState> nextStatesBuffer = _removalNextBuffer;
-            IReadOnlyList<IState> nextStatesInStackView;
-            if (wasCurrentActiveState)
-            {
-                nextStatesInStackView = Array.Empty<IState>();
-                nextStatesBuffer.Clear();
-            }
-            else
-            {
-                nextStatesBuffer.Clear();
-                for (int i = removalIndex + 1; i < _stack.Count; i++)
+                for (int i = 0; i < removalIndex; i++)
                 {
-                    nextStatesBuffer.Add(_stack[i]);
+                    previousStatesBuffer.Add(_stack[i]);
                 }
 
-                nextStatesInStackView = nextStatesBuffer;
-            }
+                IReadOnlyList<IState> nextStatesInStackView;
+                if (wasCurrentActiveState)
+                {
+                    nextStatesInStackView = Array.Empty<IState>();
+                }
+                else
+                {
+                    for (int i = removalIndex + 1; i < _stack.Count; i++)
+                    {
+                        nextStatesBuffer.Add(_stack[i]);
+                    }
+
+                    nextStatesInStackView = nextStatesBuffer;
+                }
 
             if (wasCurrentActiveState)
             {
@@ -795,10 +792,13 @@ namespace WallstopStudios.DxState.State.Stack
 
                 _stack.RemoveAt(removalIndex);
             }
-
-            previousStatesBuffer.Clear();
-            nextStatesBuffer.Clear();
             OnStateManuallyRemoved?.Invoke(stateToRemove);
+            }
+            finally
+            {
+                previousStatesBuffer.Dispose();
+                nextStatesBuffer.Dispose();
+            }
         }
 
         private static async ValueTask InvokeExitAsync(
