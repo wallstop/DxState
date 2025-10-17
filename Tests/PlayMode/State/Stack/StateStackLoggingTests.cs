@@ -19,34 +19,46 @@ namespace WallstopStudios.DxState.Tests.PlayMode.State.Stack
         public IEnumerator LogsTransitionMessagesWhenProfileEnabled()
         {
             GameObject host = new GameObject("StateStackHost");
+            List<string> capturedLogs = new List<string>();
+            Application.LogCallback logHandler = (condition, _, type) =>
+            {
+                if (type == LogType.Log)
+                {
+                    capturedLogs.Add(condition);
+                }
+            };
+
+            Application.logMessageReceived += logHandler;
             try
             {
                 StateStackManager manager = host.AddComponent<StateStackManager>();
                 StateStackLoggingProfile profile =
                     ScriptableObject.CreateInstance<StateStackLoggingProfile>();
-                typeof(StateStackManager)
-                    .GetField(
-                        "_loggingProfile",
-                        System.Reflection.BindingFlags.Instance
-                            | System.Reflection.BindingFlags.NonPublic
-                    )
-                    ?.SetValue(manager, profile);
+                manager.SetLoggingProfile(profile);
 
                 yield return null;
 
                 TestState first = new TestState("First");
                 TestState second = new TestState("Second");
 
-                LogAssert.Expect(LogType.Log, new Regex(".*Transition complete.*<none>.*First.*"));
-                LogAssert.Expect(LogType.Log, new Regex(".*Transition complete.*First.*Second.*"));
-
                 yield return WaitForValueTask(manager.PushAsync(first));
                 yield return WaitForValueTask(manager.PushAsync(second));
                 yield return WaitForValueTask(manager.WaitForTransitionCompletionAsync());
                 yield return null;
+
+                Assert.IsTrue(
+                    ContainsTransitionLog(capturedLogs, "<none>", first.Name),
+                    "Expected logging profile to record transition into the first state."
+                );
+                Assert.IsTrue(
+                    ContainsTransitionLog(capturedLogs, first.Name, second.Name),
+                    "Expected logging profile to record transition into the second state."
+                );
             }
             finally
             {
+                Application.logMessageReceived -= logHandler;
+
                 foreach (
                     StateStackLoggingProfile existing in Resources.FindObjectsOfTypeAll<StateStackLoggingProfile>()
                 )
@@ -129,6 +141,26 @@ namespace WallstopStudios.DxState.Tests.PlayMode.State.Stack
                 progress.Report(1f);
                 return default;
             }
+        }
+
+        private static bool ContainsTransitionLog(
+            IReadOnlyList<string> logs,
+            string previous,
+            string current
+        )
+        {
+            Regex pattern = new Regex(
+                $"\\[[^\\]]+\\] Transition complete: {Regex.Escape(previous)} -> {Regex.Escape(current)}"
+            );
+            foreach (string entry in logs)
+            {
+                if (pattern.IsMatch(entry))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }

@@ -34,6 +34,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
         private readonly List<GameState> _registrationScratch = new List<GameState>();
         private readonly HashSet<GameState> _uniqueStateScratch = new HashSet<GameState>();
         private bool _registeredStatesDuringSetup;
+        private bool _autoAssignInitialState = true;
 
         private void Awake()
         {
@@ -146,7 +147,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
                 }
             }
 
-            if (_initialState == null && _registrationScratch.Count > 0)
+            if (_autoAssignInitialState && _initialState == null && _registrationScratch.Count > 0)
             {
                 _initialState = _registrationScratch[0];
             }
@@ -158,6 +159,26 @@ namespace WallstopStudios.DxState.State.Stack.Components
 
             _registrationScratch.Clear();
             _uniqueStateScratch.Clear();
+        }
+
+        internal void SetForceRegisterStates(bool value)
+        {
+            _forceRegisterStates = value;
+        }
+
+        internal void SetAdditionalStates(params GameState[] states)
+        {
+            _additionalStates = states ?? Array.Empty<GameState>();
+        }
+
+        internal void SetRegisterChildGameStates(bool value)
+        {
+            _registerChildGameStates = value;
+        }
+
+        internal void SetAutoAssignInitialState(bool value)
+        {
+            _autoAssignInitialState = value;
         }
 
         private void CollectCandidate(GameState candidate)

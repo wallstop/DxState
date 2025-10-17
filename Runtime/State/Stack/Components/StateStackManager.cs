@@ -313,6 +313,13 @@ namespace WallstopStudios.DxState.State.Stack.Components
             overlay.Configure(_overlayToggleKey, _overlayStartsVisible, _overlayEventsToDisplay);
         }
 
+        internal void SetLoggingProfile(StateStackLoggingProfile profile)
+        {
+            TeardownLoggingProfile();
+            _loggingProfile = profile;
+            ConfigureLoggingProfile();
+        }
+
         private void RegisterConfiguredStates()
         {
             _registeredStatesDuringSetup = false;

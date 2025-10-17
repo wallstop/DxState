@@ -6,7 +6,8 @@
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
         "WallstopStudios.DxMessaging",
-        "WallstopStudios.UnityHelpers"
+        "WallstopStudios.UnityHelpers",
+        "WallstopStudios.DxState.Tests.Runtime"
     ],
     "includePlatforms": [
         "Editor"

@@ -1,6 +1,5 @@
 namespace WallstopStudios.DxState.Tests.EditMode.State.Machine.Component
 {
-    using System.Reflection;
     using NUnit.Framework;
     using WallstopStudios.DxState.State.Machine.Component;
 
@@ -47,12 +46,7 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Machine.Component
 
         private static void ReleaseRule(PooledTransitionRule rule)
         {
-            MethodInfo releaseMethod = typeof(PooledTransitionRule).GetMethod(
-                "Release",
-                BindingFlags.Instance | BindingFlags.NonPublic
-            );
-            Assert.IsNotNull(releaseMethod, "Expected Release method to exist via reflection.");
-            releaseMethod.Invoke(rule, null);
+            rule.ReleaseForTesting();
         }
     }
 }

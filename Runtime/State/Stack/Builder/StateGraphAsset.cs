@@ -17,6 +17,23 @@ namespace WallstopStudios.DxState.State.Stack.Builder
 
         public IReadOnlyList<StackDefinition> Stacks => _stacks;
 
+        internal void SetStacks(IEnumerable<StackDefinition> stacks)
+        {
+            _stacks.Clear();
+            if (stacks == null)
+            {
+                return;
+            }
+
+            foreach (StackDefinition definition in stacks)
+            {
+                if (definition != null)
+                {
+                    _stacks.Add(definition);
+                }
+            }
+        }
+
         public StateGraph BuildGraph()
         {
             Dictionary<string, StateStackConfiguration> configurations = new Dictionary<
@@ -64,6 +81,23 @@ namespace WallstopStudios.DxState.State.Stack.Builder
 
             public IReadOnlyList<StateTransitionMetadata> Transitions => _transitions;
 
+            internal void SetName(string name)
+            {
+                _name = name;
+            }
+
+            internal void AddState(UnityEngine.Object state, bool setAsInitial)
+            {
+                if (_states == null)
+                {
+                    _states = new List<StateReference>();
+                }
+
+                StateReference reference = new StateReference();
+                reference.SetState(state, setAsInitial);
+                _states.Add(reference);
+            }
+
             public StateStackConfiguration BuildConfiguration()
             {
                 if (_states.Count == 0)
@@ -110,6 +144,12 @@ namespace WallstopStudios.DxState.State.Stack.Builder
             public UnityEngine.Object RawState => _state;
 
             public bool SetAsInitial => _setAsInitial;
+
+            internal void SetState(UnityEngine.Object state, bool setAsInitial)
+            {
+                _state = state;
+                _setAsInitial = setAsInitial;
+            }
 
             public IState Resolve()
             {

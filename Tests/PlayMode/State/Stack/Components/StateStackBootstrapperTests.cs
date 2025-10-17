@@ -1,7 +1,6 @@
 namespace WallstopStudios.DxState.Tests.PlayMode.State.Stack.Components
 {
     using System.Collections;
-    using System.Reflection;
     using System.Text.RegularExpressions;
     using NUnit.Framework;
     using UnityEngine;
@@ -17,14 +16,15 @@ namespace WallstopStudios.DxState.Tests.PlayMode.State.Stack.Components
             GameObject host = new GameObject("Bootstrapper_MissingInitial");
             try
             {
-                StateStackManager manager = host.AddComponent<StateStackManager>();
+                host.AddComponent<StateStackManager>();
                 StateStackBootstrapper bootstrapper = host.AddComponent<StateStackBootstrapper>();
                 TestGameState childState = host.AddComponent<TestGameState>();
                 childState.Initialize("Child");
 
-                FieldInfo forceField = typeof(StateStackBootstrapper)
-                    .GetField("_forceRegisterStates", BindingFlags.Instance | BindingFlags.NonPublic);
-                forceField?.SetValue(bootstrapper, true);
+                bootstrapper.SetRegisterChildGameStates(false);
+                bootstrapper.SetAutoAssignInitialState(false);
+                bootstrapper.SetForceRegisterStates(true);
+                bootstrapper.SetAdditionalStates(childState);
 
                 LogAssert.Expect(
                     LogType.Error,
@@ -45,18 +45,14 @@ namespace WallstopStudios.DxState.Tests.PlayMode.State.Stack.Components
             GameObject host = new GameObject("Bootstrapper_DuplicateStates");
             try
             {
-                StateStackManager manager = host.AddComponent<StateStackManager>();
+                host.AddComponent<StateStackManager>();
                 StateStackBootstrapper bootstrapper = host.AddComponent<StateStackBootstrapper>();
                 TestGameState duplicate = host.AddComponent<TestGameState>();
                 duplicate.Initialize("Duplicate");
 
-                FieldInfo forceField = typeof(StateStackBootstrapper)
-                    .GetField("_forceRegisterStates", BindingFlags.Instance | BindingFlags.NonPublic);
-                forceField?.SetValue(bootstrapper, false);
-
-                FieldInfo additionalField = typeof(StateStackBootstrapper)
-                    .GetField("_additionalStates", BindingFlags.Instance | BindingFlags.NonPublic);
-                additionalField?.SetValue(bootstrapper, new GameState[] { duplicate, duplicate });
+                bootstrapper.SetRegisterChildGameStates(false);
+                bootstrapper.SetForceRegisterStates(false);
+                bootstrapper.SetAdditionalStates(duplicate, duplicate);
 
                 LogAssert.Expect(
                     LogType.Error,

@@ -84,6 +84,11 @@ namespace WallstopStudios.DxState.State.Machine.Component
             RegisterRelease();
         }
 
+        internal void ReleaseForTesting()
+        {
+            Release();
+        }
+
         private static void RegisterAcquisition()
         {
             int active = System.Threading.Interlocked.Increment(ref _activeCount);

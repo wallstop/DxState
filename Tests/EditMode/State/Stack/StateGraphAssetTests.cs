@@ -2,7 +2,6 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
 {
     using System;
     using System.Collections.Generic;
-    using System.Reflection;
     using System.Threading.Tasks;
     using NUnit.Framework;
     using UnityEngine;
@@ -23,28 +22,12 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
                 firstState.Initialize("FirstState");
                 secondState.Initialize("SecondState");
 
-                StateGraphAsset.StateReference firstReference =
-                    new StateGraphAsset.StateReference();
-                SetPrivateField(firstReference, "_state", firstState);
-                SetPrivateField(firstReference, "_setAsInitial", true);
+                StateGraphAsset.StackDefinition stackDefinition = new StateGraphAsset.StackDefinition();
+                stackDefinition.SetName("Gameplay");
+                stackDefinition.AddState(firstState, true);
+                stackDefinition.AddState(secondState, false);
 
-                StateGraphAsset.StateReference secondReference =
-                    new StateGraphAsset.StateReference();
-                SetPrivateField(secondReference, "_state", secondState);
-                SetPrivateField(secondReference, "_setAsInitial", false);
-
-                List<StateGraphAsset.StateReference> references =
-                    new List<StateGraphAsset.StateReference> { firstReference, secondReference };
-
-                StateGraphAsset.StackDefinition stackDefinition =
-                    new StateGraphAsset.StackDefinition();
-                SetPrivateField(stackDefinition, "_name", "Gameplay");
-                SetPrivateField(stackDefinition, "_states", references);
-
-                List<StateGraphAsset.StackDefinition> stacks =
-                    new List<StateGraphAsset.StackDefinition> { stackDefinition };
-
-                SetPrivateField(asset, "_stacks", stacks);
+                asset.SetStacks(new List<StateGraphAsset.StackDefinition> { stackDefinition });
 
                 StateGraph graph = asset.BuildGraph();
                 Assert.IsTrue(
@@ -72,28 +55,6 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
                     UnityEngine.Object.DestroyImmediate(secondState);
                 }
             }
-        }
-
-        private static void SetPrivateField(object target, string fieldName, object value)
-        {
-            if (target == null)
-            {
-                throw new ArgumentNullException(nameof(target));
-            }
-
-            Type targetType = target.GetType();
-            FieldInfo field = targetType.GetField(
-                fieldName,
-                BindingFlags.Instance | BindingFlags.NonPublic
-            );
-            if (field == null)
-            {
-                throw new InvalidOperationException(
-                    $"Field '{fieldName}' not found on type '{targetType.FullName}'."
-                );
-            }
-
-            field.SetValue(target, value);
         }
 
         private sealed class DummyStateAsset : ScriptableObject, IState
