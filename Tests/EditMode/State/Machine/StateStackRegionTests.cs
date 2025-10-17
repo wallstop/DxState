@@ -1,9 +1,11 @@
 namespace WallstopStudios.DxState.Tests.EditMode.State.Machine
 {
     using System;
+    using System.Collections;
     using System.Collections.Generic;
     using System.Threading.Tasks;
     using NUnit.Framework;
+    using UnityEngine.TestTools;
     using WallstopStudios.DxState.State.Machine;
     using WallstopStudios.DxState.State.Stack;
 
@@ -25,15 +27,15 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Machine
             Assert.AreEqual(0, stack.Stack.Count);
         }
 
-        [Test]
-        public void FlattenOnActivateReactivatesTargetState()
+        [UnityTest]
+        public IEnumerator FlattenOnActivateReactivatesTargetState()
         {
             StateStack stack = new StateStack();
             RecordingState baseState = new RecordingState("Base");
             RecordingState overlay = new RecordingState("Overlay");
 
-            stack.PushAsync(overlay).GetAwaiter().GetResult();
-            stack.PushAsync(baseState).GetAwaiter().GetResult();
+            yield return WaitForValueTask(stack.PushAsync(overlay));
+            yield return WaitForValueTask(stack.PushAsync(baseState));
 
             StateStackRegion region = new StateStackRegion(
                 stack,
@@ -42,10 +44,12 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Machine
                 removeOnDeactivate: false
             );
 
-            stack.PushAsync(overlay).GetAwaiter().GetResult();
+            yield return WaitForValueTask(stack.PushAsync(overlay));
             Assert.AreSame(overlay, stack.CurrentState);
 
             region.Activate(new TransitionContext(TransitionCause.Manual));
+
+            yield return WaitForValueTask(stack.WaitForTransitionCompletionAsync());
 
             Assert.AreSame(baseState, stack.CurrentState);
         }
@@ -58,6 +62,27 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Machine
             StateStackRegion region = new StateStackRegion(stack, state, priority: 5);
 
             Assert.AreEqual(5, region.Priority);
+        }
+
+        private static IEnumerator WaitForValueTask(ValueTask task)
+        {
+            Task awaitedTask = task.AsTask();
+            while (!awaitedTask.IsCompleted)
+            {
+                yield return null;
+            }
+
+            if (awaitedTask.IsFaulted)
+            {
+                Exception exception = awaitedTask.Exception;
+                Exception inner = exception != null ? exception.InnerException : null;
+                throw inner ?? exception;
+            }
+
+            if (awaitedTask.IsCanceled)
+            {
+                throw new OperationCanceledException();
+            }
         }
 
         private sealed class RecordingState : IState

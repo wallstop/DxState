@@ -1,4 +1,4 @@
-namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Components
+namespace WallstopStudios.DxState.Tests.PlayMode.State.Stack.Components
 {
     using System.Collections;
     using System.Reflection;
@@ -26,7 +26,10 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Components
                     .GetField("_forceRegisterStates", BindingFlags.Instance | BindingFlags.NonPublic);
                 forceField?.SetValue(bootstrapper, true);
 
-                LogAssert.Expect(LogType.Error, new Regex("StateStackBootstrapper has no initial state configured"));
+                LogAssert.Expect(
+                    LogType.Error,
+                    new Regex("StateStackBootstrapper has no initial state configured")
+                );
 
                 yield return null;
             }
@@ -55,7 +58,10 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Components
                     .GetField("_additionalStates", BindingFlags.Instance | BindingFlags.NonPublic);
                 additionalField?.SetValue(bootstrapper, new GameState[] { duplicate, duplicate });
 
-                LogAssert.Expect(LogType.Error, new Regex("Duplicate GameState reference detected"));
+                LogAssert.Expect(
+                    LogType.Error,
+                    new Regex("Duplicate GameState reference detected")
+                );
 
                 yield return null;
             }

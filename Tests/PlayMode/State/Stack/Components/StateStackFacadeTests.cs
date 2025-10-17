@@ -1,4 +1,4 @@
-namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Components
+namespace WallstopStudios.DxState.Tests.PlayMode.State.Stack.Components
 {
     using System;
     using System.Collections;
@@ -9,6 +9,7 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Components
     using UnityEngine.TestTools;
     using WallstopStudios.DxState.State.Stack;
     using WallstopStudios.DxState.State.Stack.Components;
+    using WallstopStudios.UnityHelpers.Core.Extension;
 
     public sealed class StateStackFacadeTests
     {
@@ -24,6 +25,8 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Components
                 TestGameState firstState = host.AddComponent<TestGameState>();
                 firstState.Initialize("FirstState");
                 manager.TryRegister(firstState, true);
+
+                yield return null;
 
                 List<GameState> pushedInvocations = new List<GameState>();
                 List<GameState> changedInvocations = new List<GameState>();
@@ -62,6 +65,8 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Components
                 manager.TryRegister(initialState, true);
                 manager.TryRegister(replacementState, true);
 
+                yield return null;
+
                 List<GameState> poppedInvocations = new List<GameState>();
                 List<GameState> changedInvocations = new List<GameState>();
                 facade.OnStatePoppedEvent.AddListener(poppedInvocations.Add);
@@ -89,23 +94,7 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Components
 
         private static IEnumerator WaitForValueTask(ValueTask task)
         {
-            Task awaited = task.AsTask();
-            while (!awaited.IsCompleted)
-            {
-                yield return null;
-            }
-
-            if (awaited.IsFaulted)
-            {
-                Exception exception = awaited.Exception;
-                Exception inner = exception != null ? exception.InnerException : null;
-                throw inner ?? exception;
-            }
-
-            if (awaited.IsCanceled)
-            {
-                throw new OperationCanceledException();
-            }
+            return task.AsCoroutine();
         }
 
         private sealed class TestGameState : GameState

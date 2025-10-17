@@ -1,9 +1,10 @@
-namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
+namespace WallstopStudios.DxState.Tests.PlayMode.State.Stack
 {
     using System;
+    using System.Collections;
     using System.Collections.Generic;
-    using System.Text.RegularExpressions;
     using System.Threading.Tasks;
+    using System.Text.RegularExpressions;
     using NUnit.Framework;
     using UnityEngine;
     using UnityEngine.TestTools;
@@ -14,11 +15,10 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
 
     public sealed class StateStackLoggingTests
     {
-        [Test]
-        public void LogsTransitionMessagesWhenProfileEnabled()
+        [UnityTest]
+        public IEnumerator LogsTransitionMessagesWhenProfileEnabled()
         {
             GameObject host = new GameObject("StateStackHost");
-            ScriptableObject.CreateInstance<StateStackLoggingProfile>();
             try
             {
                 StateStackManager manager = host.AddComponent<StateStackManager>();
@@ -32,7 +32,7 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
                     )
                     ?.SetValue(manager, profile);
 
-                manager.SendMessage("Awake", SendMessageOptions.DontRequireReceiver);
+                yield return null;
 
                 TestState first = new TestState("First");
                 TestState second = new TestState("Second");
@@ -40,13 +40,10 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
                 LogAssert.Expect(LogType.Log, new Regex(".*Transition complete.*<none>.*First.*"));
                 LogAssert.Expect(LogType.Log, new Regex(".*Transition complete.*First.*Second.*"));
 
-                Task.Run(async () =>
-                    {
-                        await manager.PushAsync(first);
-                        await manager.PushAsync(second);
-                    })
-                    .GetAwaiter()
-                    .GetResult();
+                yield return WaitForValueTask(manager.PushAsync(first));
+                yield return WaitForValueTask(manager.PushAsync(second));
+                yield return WaitForValueTask(manager.WaitForTransitionCompletionAsync());
+                yield return null;
             }
             finally
             {
@@ -57,6 +54,27 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
                     ScriptableObject.DestroyImmediate(existing);
                 }
                 Object.DestroyImmediate(host);
+            }
+        }
+
+        private static IEnumerator WaitForValueTask(ValueTask valueTask)
+        {
+            Task awaitedTask = valueTask.AsTask();
+            while (!awaitedTask.IsCompleted)
+            {
+                yield return null;
+            }
+
+            if (awaitedTask.IsFaulted)
+            {
+                Exception exception = awaitedTask.Exception;
+                Exception inner = exception != null ? exception.InnerException : null;
+                throw inner ?? exception;
+            }
+
+            if (awaitedTask.IsCanceled)
+            {
+                throw new OperationCanceledException();
             }
         }
 

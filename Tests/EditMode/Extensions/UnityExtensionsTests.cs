@@ -86,6 +86,37 @@ namespace WallstopStudios.DxState.Tests.EditMode.Extensions
             Assert.IsTrue(awaitedTask.IsCanceled);
         }
 
+        private static IEnumerator WaitForValueTaskWithoutConversion(ValueTask task)
+        {
+            while (!task.IsCompleted)
+            {
+                yield return null;
+            }
+
+            if (task.IsCompletedSuccessfully)
+            {
+                yield break;
+            }
+
+            Task awaitedTask = task.AsTask();
+            while (!awaitedTask.IsCompleted)
+            {
+                yield return null;
+            }
+
+            if (awaitedTask.IsFaulted)
+            {
+                Exception exception = awaitedTask.Exception;
+                Exception inner = exception != null ? exception.InnerException : null;
+                throw inner ?? exception;
+            }
+
+            if (awaitedTask.IsCanceled)
+            {
+                throw new OperationCanceledException();
+            }
+        }
+
         [UnityTest]
         public IEnumerator AwaitWithProgressDoesNotAllocateAfterWarmup()
         {
@@ -93,11 +124,7 @@ namespace WallstopStudios.DxState.Tests.EditMode.Extensions
             Progress<float> warmupProgress = new Progress<float>(_ => { });
             ResourceRequest warmupRequest = Resources.LoadAsync<TextAsset>("TestData");
             ValueTask warmupTask = warmupRequest.AwaitWithProgress(warmupProgress);
-            while (!warmupTask.IsCompleted)
-            {
-                yield return null;
-            }
-            warmupTask.GetAwaiter().GetResult();
+            yield return WaitForValueTaskWithoutConversion(warmupTask);
             yield return null;
 
             GC.Collect();
@@ -109,11 +136,7 @@ namespace WallstopStudios.DxState.Tests.EditMode.Extensions
 
             ResourceRequest request = Resources.LoadAsync<TextAsset>("TestData");
             ValueTask awaited = request.AwaitWithProgress(progress);
-            while (!awaited.IsCompleted)
-            {
-                yield return null;
-            }
-            awaited.GetAwaiter().GetResult();
+            yield return WaitForValueTaskWithoutConversion(awaited);
             yield return null;
 
             long after = GC.GetAllocatedBytesForCurrentThread();

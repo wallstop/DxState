@@ -30,6 +30,8 @@ namespace WallstopStudios.DxState.State.Stack.Components
 
         public GameStateEvent OnStateChangedEvent => _onStateChanged;
 
+        private bool _subscriptionsActive;
+
         private void Awake()
         {
             EnsureManagerReference();
@@ -55,6 +57,11 @@ namespace WallstopStudios.DxState.State.Stack.Components
                 return;
             }
 
+            if (!EnsureManagerAvailable())
+            {
+                return;
+            }
+
             RunOperation(_stateStackManager.PushAsync(state));
         }
 
@@ -66,16 +73,31 @@ namespace WallstopStudios.DxState.State.Stack.Components
                 return;
             }
 
+            if (!EnsureManagerAvailable())
+            {
+                return;
+            }
+
             RunOperation(_stateStackManager.PushAsync(stateName));
         }
 
         public void PopState()
         {
+            if (!EnsureManagerAvailable())
+            {
+                return;
+            }
+
             RunOperation(_stateStackManager.PopAsync());
         }
 
         public void TryPopState()
         {
+            if (!EnsureManagerAvailable())
+            {
+                return;
+            }
+
             RunOperation(_stateStackManager.TryPopAsync());
         }
 
@@ -86,12 +108,22 @@ namespace WallstopStudios.DxState.State.Stack.Components
                 return;
             }
 
+            if (!EnsureManagerAvailable())
+            {
+                return;
+            }
+
             RunOperation(ReplaceStateAsync(state));
         }
 
         public void FlattenState(GameState state)
         {
             if (!ValidateState(state, nameof(FlattenState)))
+            {
+                return;
+            }
+
+            if (!EnsureManagerAvailable())
             {
                 return;
             }
@@ -109,16 +141,41 @@ namespace WallstopStudios.DxState.State.Stack.Components
             _stateStackManager = GetComponent<StateStackManager>();
         }
 
+        private bool EnsureManagerAvailable()
+        {
+            if (_stateStackManager == null)
+            {
+                EnsureManagerReference();
+                if (_stateStackManager == null)
+                {
+                    Debug.LogError(
+                        "StateStackFacade requires an associated StateStackManager.",
+                        this
+                    );
+                    return false;
+                }
+            }
+
+            SubscribeToManager();
+            return true;
+        }
+
         private void SubscribeToManager()
         {
+            if (_stateStackManager == null || _subscriptionsActive)
+            {
+                return;
+            }
+
             _stateStackManager.StatePushed += HandleStatePushed;
             _stateStackManager.StatePopped += HandleStatePopped;
             _stateStackManager.TransitionCompleted += HandleTransitionComplete;
+            _subscriptionsActive = true;
         }
 
         private void UnsubscribeFromManager()
         {
-            if (_stateStackManager == null)
+            if (_stateStackManager == null || !_subscriptionsActive)
             {
                 return;
             }
@@ -126,6 +183,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
             _stateStackManager.StatePushed -= HandleStatePushed;
             _stateStackManager.StatePopped -= HandleStatePopped;
             _stateStackManager.TransitionCompleted -= HandleTransitionComplete;
+            _subscriptionsActive = false;
         }
 
         private bool ValidateState(GameState state, string caller)

@@ -451,7 +451,28 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
                 yield return null;
             }
 
-            valueTask.GetAwaiter().GetResult();
+            if (valueTask.IsCompletedSuccessfully)
+            {
+                yield break;
+            }
+
+            Task task = valueTask.AsTask();
+            while (!task.IsCompleted)
+            {
+                yield return null;
+            }
+
+            if (task.IsCanceled)
+            {
+                throw new OperationCanceledException();
+            }
+
+            if (task.IsFaulted)
+            {
+                Exception exception = task.Exception;
+                Exception inner = exception != null ? exception.InnerException : null;
+                throw inner ?? exception;
+            }
         }
 
         private static IEnumerator WaitForValueTaskWithoutConversions<TState>(ValueTask<TState> valueTask)
@@ -461,7 +482,28 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack
                 yield return null;
             }
 
-            valueTask.GetAwaiter().GetResult();
+            if (valueTask.IsCompletedSuccessfully)
+            {
+                yield break;
+            }
+
+            Task<TState> task = valueTask.AsTask();
+            while (!task.IsCompleted)
+            {
+                yield return null;
+            }
+
+            if (task.IsCanceled)
+            {
+                throw new OperationCanceledException();
+            }
+
+            if (task.IsFaulted)
+            {
+                Exception exception = task.Exception;
+                Exception inner = exception != null ? exception.InnerException : null;
+                throw inner ?? exception;
+            }
         }
 
         private static IEnumerator ExpectFaulted(ValueTask valueTask, Action<Exception> onFaulted)

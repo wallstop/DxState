@@ -207,8 +207,7 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Diagnostics
             )
                 where TProgress : IProgress<float>
             {
-                progress.Report(1f);
-                return new ValueTask();
+                return ReportAfterYieldAsync(progress);
             }
 
             public void Tick(TickMode mode, float delta) { }
@@ -220,8 +219,7 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Diagnostics
             )
                 where TProgress : IProgress<float>
             {
-                progress.Report(1f);
-                return new ValueTask();
+                return ReportAfterYieldAsync(progress);
             }
 
             public ValueTask Remove<TProgress>(
@@ -231,8 +229,20 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Diagnostics
             )
                 where TProgress : IProgress<float>
             {
+                return ReportAfterYieldAsync(progress);
+            }
+
+            private static ValueTask ReportAfterYieldAsync<TProgress>(TProgress progress)
+                where TProgress : IProgress<float>
+            {
+                return new ValueTask(ReportAfterYieldInternal(progress));
+            }
+
+            private static async Task ReportAfterYieldInternal<TProgress>(TProgress progress)
+                where TProgress : IProgress<float>
+            {
+                await Task.Yield();
                 progress.Report(1f);
-                return new ValueTask();
             }
         }
     }

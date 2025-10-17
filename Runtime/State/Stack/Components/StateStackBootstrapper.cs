@@ -1,10 +1,11 @@
 namespace WallstopStudios.DxState.State.Stack.Components
 {
     using System;
+    using System.Collections;
     using System.Collections.Generic;
-    using System.Threading.Tasks;
     using global::DxMessaging.Unity;
     using UnityEngine;
+    using WallstopStudios.UnityHelpers.Core.Extension;
 
     [DefaultExecutionOrder(-500)]
     [RequireComponent(typeof(StateStackManager))]
@@ -37,14 +38,15 @@ namespace WallstopStudios.DxState.State.Stack.Components
         private void Awake()
         {
             EnsureDependencies();
-            RegisterConfiguredStates();
         }
 
-        private async void Start()
+        private IEnumerator Start()
         {
+            RegisterConfiguredStates();
+
             if (!_pushInitialStateOnStart)
             {
-                return;
+                yield break;
             }
 
             if (_initialState == null)
@@ -56,12 +58,12 @@ namespace WallstopStudios.DxState.State.Stack.Components
                         this
                     );
                 }
-                return;
+                yield break;
             }
 
             if (ReferenceEquals(_stateStackManager.CurrentState, _initialState))
             {
-                return;
+                yield break;
             }
 
             IReadOnlyList<IState> stack = _stateStackManager.Stack;
@@ -69,12 +71,12 @@ namespace WallstopStudios.DxState.State.Stack.Components
             {
                 if (ReferenceEquals(stack[i], _initialState))
                 {
-                    await _stateStackManager.FlattenAsync(_initialState);
-                    return;
+                    yield return _stateStackManager.FlattenAsync(_initialState).AsCoroutine();
+                    yield break;
                 }
             }
 
-            await _stateStackManager.PushAsync(_initialState);
+            yield return _stateStackManager.PushAsync(_initialState).AsCoroutine();
         }
 
         private void EnsureDependencies()
@@ -120,9 +122,20 @@ namespace WallstopStudios.DxState.State.Stack.Components
                 }
             }
 
+            IReadOnlyDictionary<string, IState> registeredStates = _stateStackManager.RegisteredStates;
+
             for (int i = 0; i < _registrationScratch.Count; i++)
             {
                 GameState state = _registrationScratch[i];
+                IState existingState;
+                if (
+                    registeredStates != null
+                    && registeredStates.TryGetValue(state.Name, out existingState)
+                    && ReferenceEquals(existingState, state)
+                )
+                {
+                    continue;
+                }
                 bool registered = _stateStackManager.TryRegister(state, _forceRegisterStates);
                 if (!registered && !_forceRegisterStates)
                 {
