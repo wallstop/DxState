@@ -5,6 +5,7 @@ namespace WallstopStudios.DxState.State.Machine.Component
     using UnityHelpers.Core.Attributes;
     using UnityHelpers.Core.Extension;
     using UnityHelpers.Tags;
+    using WallstopStudios.UnityHelpers.Utils;
 #if ODIN_INSPECTOR
     using Sirenix.OdinInspector;
 #endif
@@ -162,7 +163,10 @@ namespace WallstopStudios.DxState.State.Machine.Component
                 return buffer;
             }
 
-            List<string> temporary = new List<string>();
+            using PooledResource<List<string>> pooled = Buffers<string>.GetList(
+                0,
+                out List<string> temporary
+            );
             foreach (string tag in source)
             {
                 temporary.Add(tag);

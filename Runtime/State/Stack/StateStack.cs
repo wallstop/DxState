@@ -11,6 +11,7 @@ namespace WallstopStudios.DxState.State.Stack
     using UnityHelpers.Core.Extension;
     using WallstopStudios.DxState.State.Stack.Internal;
     using WallstopStudios.DxState.Pooling;
+    using WallstopStudios.UnityHelpers.Utils;
 
     public enum StateTransitionPhase
     {
@@ -722,9 +723,14 @@ namespace WallstopStudios.DxState.State.Stack
 
             bool wasCurrentActiveState = removalIndex == _stack.Count - 1;
 
-            PooledList<IState> previousStatesBuffer = PooledList<IState>.Rent(removalIndex);
-            PooledList<IState> nextStatesBuffer = PooledList<IState>.Rent(_stack.Count - removalIndex);
-            try
+            using PooledResource<List<IState>> previousPool = Buffers<IState>.GetList(
+                removalIndex,
+                out List<IState> previousStatesBuffer
+            );
+            using PooledResource<List<IState>> nextPool = Buffers<IState>.GetList(
+                Math.Max(_stack.Count - removalIndex, 0),
+                out List<IState> nextStatesBuffer
+            );
             {
                 for (int i = 0; i < removalIndex; i++)
                 {
@@ -746,58 +752,68 @@ namespace WallstopStudios.DxState.State.Stack
                     nextStatesInStackView = nextStatesBuffer;
                 }
 
-            if (wasCurrentActiveState)
-            {
-                IState stateBecomingActive = removalIndex > 0 ? _stack[removalIndex - 1] : null;
-
-                ScopedProgress removeMethodProgress = new ScopedProgress(overallProgress, 0f, 0.4f);
-                await InvokeRemoveAsync(
-                    stateToRemove,
-                    previousStatesBuffer,
-                    nextStatesInStackView,
-                    removeMethodProgress,
-                    options,
-                    cancellationToken,
-                    cancellationScope
-                );
-
-                _stack.RemoveAt(removalIndex);
-                if (stateBecomingActive != null)
+                if (wasCurrentActiveState)
                 {
-                    ScopedProgress revertProgress = new ScopedProgress(overallProgress, 0.4f, 0.6f);
-                    await InvokeEnterAsync(
-                        stateBecomingActive,
+                    IState stateBecomingActive = removalIndex > 0
+                        ? _stack[removalIndex - 1]
+                        : null;
+
+                    ScopedProgress removeMethodProgress = new ScopedProgress(
+                        overallProgress,
+                        0f,
+                        0.4f
+                    );
+                    await InvokeRemoveAsync(
                         stateToRemove,
-                        revertProgress,
-                        StateDirection.Backward,
-                        StateTransitionPhase.EnterRollback,
+                        previousStatesBuffer,
+                        nextStatesInStackView,
+                        removeMethodProgress,
                         options,
                         cancellationToken,
                         cancellationScope
                     );
-                }
-            }
-            else
-            {
-                ScopedProgress removeMethodProgress = new ScopedProgress(overallProgress, 0f, 1.0f);
-                await InvokeRemoveAsync(
-                    stateToRemove,
-                    previousStatesBuffer,
-                    nextStatesInStackView,
-                    removeMethodProgress,
-                    options,
-                    cancellationToken,
-                    cancellationScope
-                );
 
-                _stack.RemoveAt(removalIndex);
-            }
-            OnStateManuallyRemoved?.Invoke(stateToRemove);
-            }
-            finally
-            {
-                previousStatesBuffer.Dispose();
-                nextStatesBuffer.Dispose();
+                    _stack.RemoveAt(removalIndex);
+                    if (stateBecomingActive != null)
+                    {
+                        ScopedProgress revertProgress = new ScopedProgress(
+                            overallProgress,
+                            0.4f,
+                            0.6f
+                        );
+                        await InvokeEnterAsync(
+                            stateBecomingActive,
+                            stateToRemove,
+                            revertProgress,
+                            StateDirection.Backward,
+                            StateTransitionPhase.EnterRollback,
+                            options,
+                            cancellationToken,
+                            cancellationScope
+                        );
+                    }
+                }
+                else
+                {
+                    ScopedProgress removeMethodProgress = new ScopedProgress(
+                        overallProgress,
+                        0f,
+                        1.0f
+                    );
+                    await InvokeRemoveAsync(
+                        stateToRemove,
+                        previousStatesBuffer,
+                        nextStatesInStackView,
+                        removeMethodProgress,
+                        options,
+                        cancellationToken,
+                        cancellationScope
+                    );
+
+                    _stack.RemoveAt(removalIndex);
+                }
+
+                OnStateManuallyRemoved?.Invoke(stateToRemove);
             }
         }
 
