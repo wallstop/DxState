@@ -18,6 +18,7 @@ namespace WallstopStudios.DxState.State.Machine
         private readonly List<Transition<T>> _globalTransitions;
         private readonly PooledQueue<PendingTransition> _pendingTransitions;
         private readonly TransitionHistoryBuffer _transitionHistory;
+        private readonly List<PooledTransitionRule> _pooledTransitionRules;
 #if DXSTATE_PROFILING
         private static readonly ProfilerMarker _transitionMarker = new ProfilerMarker("DxState.StateMachine.Transition");
         private static readonly ProfilerMarker _updateMarker = new ProfilerMarker("DxState.StateMachine.Update");
@@ -59,6 +60,7 @@ namespace WallstopStudios.DxState.State.Machine
             _globalTransitions = new List<Transition<T>>();
             _pendingTransitions = new PooledQueue<PendingTransition>();
             _transitionHistory = new TransitionHistoryBuffer(DefaultTransitionHistoryCapacity);
+            _pooledTransitionRules = new List<PooledTransitionRule>();
             HashSet<T> discoveredStates = new HashSet<T>();
             HashSet<Transition<T>> uniqueTransitions = new HashSet<Transition<T>>();
 
@@ -103,6 +105,7 @@ namespace WallstopStudios.DxState.State.Machine
                 {
                     _globalTransitions.Add(transition);
                     discoveredStates.Add(transition.to);
+                    TrackPooledRule(transition);
 
                     if (transition.to is IStateContext<T> globalToContext)
                     {
@@ -114,6 +117,7 @@ namespace WallstopStudios.DxState.State.Machine
 
                 List<Transition<T>> transitionsFromState = _states.GetOrAdd(transition.from);
                 transitionsFromState.Add(transition);
+                TrackPooledRule(transition);
 
                 discoveredStates.Add(transition.from);
                 discoveredStates.Add(transition.to);
@@ -447,6 +451,14 @@ namespace WallstopStudios.DxState.State.Machine
             }
 
             _disposed = true;
+            if (_pooledTransitionRules.Count > 0)
+            {
+                for (int i = 0; i < _pooledTransitionRules.Count; i++)
+                {
+                    _pooledTransitionRules[i].Release();
+                }
+                _pooledTransitionRules.Clear();
+            }
             _pendingTransitions.Dispose();
             _transitionHistory.Dispose();
         }
@@ -454,6 +466,27 @@ namespace WallstopStudios.DxState.State.Machine
         ~StateMachine()
         {
             Dispose(false);
+        }
+
+        private void TrackPooledRule(Transition<T> transition)
+        {
+            if (transition == null)
+            {
+                return;
+            }
+
+            PooledTransitionRule pooledRule = transition.ruleStruct as PooledTransitionRule;
+            if (pooledRule == null)
+            {
+                return;
+            }
+
+            if (_pooledTransitionRules.Contains(pooledRule))
+            {
+                return;
+            }
+
+            _pooledTransitionRules.Add(pooledRule);
         }
 
         private static TransitionContext ResolveTransitionContext(

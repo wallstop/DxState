@@ -100,6 +100,64 @@ namespace WallstopStudios.DxState.State.Machine
             return AddTransition(transition);
         }
 
+        public StateMachineBuilder<TState> RentTransition(
+            TState from,
+            TState to,
+            Func<bool> rule,
+            TransitionContext context = default
+        )
+        {
+            PooledTransitionRule pooledRule = PooledTransitionRule.Rent(rule);
+            Transition<TState> transition = new Transition<TState>(from, to, pooledRule, context);
+            return AddTransition(transition);
+        }
+
+        public StateMachineBuilder<TState> RentTransition(
+            TState from,
+            TState to,
+            ITransitionRule rule,
+            TransitionContext context = default
+        )
+        {
+            PooledTransitionRule pooledRule = PooledTransitionRule.Rent(rule);
+            Transition<TState> transition = new Transition<TState>(from, to, pooledRule, context);
+            return AddTransition(transition);
+        }
+
+        public StateMachineBuilder<TState> RentAnyTransition(
+            TState to,
+            Func<bool> rule,
+            TransitionContext context = default
+        )
+        {
+            PooledTransitionRule pooledRule = PooledTransitionRule.Rent(rule);
+            Transition<TState> transition = new Transition<TState>(
+                default,
+                to,
+                pooledRule,
+                context,
+                isGlobal: true
+            );
+            return AddTransition(transition);
+        }
+
+        public StateMachineBuilder<TState> RentAnyTransition(
+            TState to,
+            ITransitionRule rule,
+            TransitionContext context = default
+        )
+        {
+            PooledTransitionRule pooledRule = PooledTransitionRule.Rent(rule);
+            Transition<TState> transition = new Transition<TState>(
+                default,
+                to,
+                pooledRule,
+                context,
+                isGlobal: true
+            );
+            return AddTransition(transition);
+        }
+
         public StateMachine<TState> Build(TState initialState)
         {
             List<Transition<TState>> snapshot = new List<Transition<TState>>(_transitions.Count);

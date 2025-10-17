@@ -44,6 +44,7 @@ namespace WallstopStudios.DxState.Editor.State
         private Button _refreshButton;
         private Button _syncButton;
         private Button _validateButton;
+        private Button _markBaselineButton;
         private Label _statusLabel;
 
         private readonly List<string> _stackOptions = new List<string>();
@@ -167,6 +168,9 @@ namespace WallstopStudios.DxState.Editor.State
             _validateButton = new Button(RunValidation) { text = "Validate" };
             _toolbar.Add(_validateButton);
 
+            _markBaselineButton = new Button(MarkChangeBaseline) { text = "Mark Saved" };
+            _toolbar.Add(_markBaselineButton);
+
             _statusLabel = new Label();
             _toolbar.Add(_statusLabel);
 
@@ -194,6 +198,17 @@ namespace WallstopStudios.DxState.Editor.State
 
             BuildInspectorPanel();
             _contentSplitView.Add(_inspectorPanel);
+        }
+
+        private void MarkChangeBaseline()
+        {
+            if (_graphView == null)
+            {
+                return;
+            }
+
+            _graphView.MarkChangeBaseline();
+            HighlightGraph();
         }
 
         private void BuildInspectorPanel()
@@ -623,7 +638,8 @@ namespace WallstopStudios.DxState.Editor.State
                     stackProperty,
                     _graphAsset,
                     configuration,
-                    stackDefinition?.Transitions
+                    stackDefinition?.Transitions,
+                    _stackName
                 );
                 _graphView.ClearSelection();
             }
@@ -820,8 +836,12 @@ namespace WallstopStudios.DxState.Editor.State
             private readonly List<StateEdge> _edges;
             private readonly Dictionary<string, StateMetricsSnapshot> _metricsCache;
             private readonly Dictionary<string, StateMetricsAccumulator> _metricsAccumulators;
+            private readonly GraphChangeTracker _changeTracker;
             private SerializedProperty _transitionsProperty;
             private IReadOnlyList<StateGraphAsset.StateTransitionMetadata> _metadataFallback;
+            private StateGraphAsset _baselineAsset;
+            private string _baselineStackName;
+            private string _currentStackName;
 
             public Action GraphModified { get; set; }
             public Action<StateGraphTemplateApplier.TemplateApplicationResult> TemplateApplied { get; set; }
@@ -838,6 +858,7 @@ namespace WallstopStudios.DxState.Editor.State
                 _metricsAccumulators = new Dictionary<string, StateMetricsAccumulator>(
                     StringComparer.Ordinal
                 );
+                _changeTracker = new GraphChangeTracker();
                 _metadataFallback = Array.Empty<StateGraphAsset.StateTransitionMetadata>();
                 this.SetupZoom(ContentZoomer.DefaultMinScale, ContentZoomer.DefaultMaxScale);
                 this.AddManipulator(new ContentDragger());
@@ -869,6 +890,10 @@ namespace WallstopStudios.DxState.Editor.State
                 _graphAsset = null;
                 _configuration = null;
                 _currentManager = null;
+                _baselineAsset = null;
+                _baselineStackName = null;
+                _currentStackName = null;
+                _changeTracker.ClearBaseline();
                 StateSelected?.Invoke(null);
                 TransitionSelected?.Invoke(null);
                 StateSelected = null;
@@ -881,7 +906,8 @@ namespace WallstopStudios.DxState.Editor.State
                 SerializedProperty stackProperty,
                 StateGraphAsset graphAsset,
                 StateStackConfiguration configuration,
-                IReadOnlyList<StateGraphAsset.StateTransitionMetadata> metadata = null
+                IReadOnlyList<StateGraphAsset.StateTransitionMetadata> metadata,
+                string stackName = null
             )
             {
                 ClearValidationState();
@@ -896,6 +922,15 @@ namespace WallstopStudios.DxState.Editor.State
                         ? stackProperty.FindPropertyRelative("_transitions")
                         : null;
 
+                _serializedGraph?.UpdateIfRequiredOrScript();
+
+                string normalizedStackName = stackName ?? string.Empty;
+                _currentStackName = normalizedStackName;
+
+                bool assetChanged = !ReferenceEquals(_baselineAsset, graphAsset);
+                bool stackChanged =
+                    !string.Equals(_baselineStackName, normalizedStackName, StringComparison.Ordinal);
+
                 ClearSelection();
                 StateSelected?.Invoke(null);
                 TransitionSelected?.Invoke(null);
@@ -905,7 +940,17 @@ namespace WallstopStudios.DxState.Editor.State
 
                 if (_stackProperty == null)
                 {
+                    _changeTracker.ClearBaseline();
+                    _baselineAsset = graphAsset;
+                    _baselineStackName = normalizedStackName;
                     return;
+                }
+
+                if (assetChanged || stackChanged || !_changeTracker.HasBaseline)
+                {
+                    _changeTracker.CaptureBaseline(_stackProperty);
+                    _baselineAsset = graphAsset;
+                    _baselineStackName = normalizedStackName;
                 }
 
                 SerializedProperty statesProperty = _stackProperty.FindPropertyRelative("_states");
@@ -914,6 +959,9 @@ namespace WallstopStudios.DxState.Editor.State
                     return;
                 }
 
+                Dictionary<string, int> occurrenceCounts = new Dictionary<string, int>(
+                    StringComparer.Ordinal
+                );
                 IReadOnlyList<IState> resolvedStates = configuration?.States;
                 for (int i = 0; i < statesProperty.arraySize; i++)
                 {
@@ -938,9 +986,16 @@ namespace WallstopStudios.DxState.Editor.State
                     }
 
                     bool isInitial = initialProperty != null && initialProperty.boolValue;
+                    string nodeKey = GraphChangeTracker.BuildNodeKey(stateObject);
+                    int occurrence;
+                    occurrenceCounts.TryGetValue(nodeKey, out occurrence);
+                    string uniqueId = GraphChangeTracker.BuildUniqueId(nodeKey, occurrence);
+                    occurrenceCounts[nodeKey] = occurrence + 1;
+
                     StateNode node = new StateNode(this, stateObject, resolvedState, isInitial)
                     {
                         ArrayIndex = i,
+                        UniqueId = uniqueId,
                     };
 
                     int column = i % 4;
@@ -954,6 +1009,49 @@ namespace WallstopStudios.DxState.Editor.State
 
                 CreateEdges();
                 Highlight(_currentManager);
+                ApplyChangeHighlights();
+            }
+
+            public void MarkChangeBaseline()
+            {
+                if (_changeTracker == null)
+                {
+                    return;
+                }
+
+                if (_stackProperty == null)
+                {
+                    _changeTracker.ClearBaseline();
+                    _baselineAsset = _graphAsset;
+                    _baselineStackName = _currentStackName ?? string.Empty;
+                    for (int i = 0; i < _nodes.Count; i++)
+                    {
+                        _nodes[i].SetChangeHighlight(false);
+                    }
+                    return;
+                }
+
+                _serializedGraph?.UpdateIfRequiredOrScript();
+                _changeTracker.CaptureBaseline(_stackProperty);
+                _baselineAsset = _graphAsset;
+                _baselineStackName = _currentStackName ?? string.Empty;
+                ApplyChangeHighlights();
+            }
+
+            private void ApplyChangeHighlights()
+            {
+                if (_nodes.Count == 0)
+                {
+                    return;
+                }
+
+                HashSet<string> changedNodes = _changeTracker.GetChangedNodeIds(_stackProperty);
+                for (int i = 0; i < _nodes.Count; i++)
+                {
+                    StateNode node = _nodes[i];
+                    bool isChanged = changedNodes != null && changedNodes.Contains(node.UniqueId);
+                    node.SetChangeHighlight(isChanged);
+                }
             }
 
             public void ClearValidationState()
@@ -976,7 +1074,8 @@ namespace WallstopStudios.DxState.Editor.State
                     _stackProperty,
                     _graphAsset,
                     _configuration,
-                    _metadataFallback
+                    _metadataFallback,
+                    _currentStackName
                 );
             }
 
@@ -1738,6 +1837,325 @@ namespace WallstopStudios.DxState.Editor.State
                 GraphModified?.Invoke();
             }
 
+            private sealed class GraphChangeTracker
+            {
+                private Dictionary<string, NodeSnapshot> _baselineNodes;
+
+                public bool HasBaseline => _baselineNodes != null;
+
+                public void CaptureBaseline(SerializedProperty stackProperty)
+                {
+                    _baselineNodes = BuildSnapshot(stackProperty);
+                }
+
+                public HashSet<string> GetChangedNodeIds(SerializedProperty stackProperty)
+                {
+                    HashSet<string> changed = new HashSet<string>(StringComparer.Ordinal);
+                    if (stackProperty == null)
+                    {
+                        return changed;
+                    }
+
+                    if (_baselineNodes == null)
+                    {
+                        return changed;
+                    }
+
+                    Dictionary<string, NodeSnapshot> current = BuildSnapshot(stackProperty);
+                    foreach (KeyValuePair<string, NodeSnapshot> pair in current)
+                    {
+                        if (!_baselineNodes.TryGetValue(pair.Key, out NodeSnapshot baseline))
+                        {
+                            changed.Add(pair.Key);
+                            continue;
+                        }
+
+                        if (!NodeSnapshot.AreEquivalent(baseline, pair.Value))
+                        {
+                            changed.Add(pair.Key);
+                        }
+                    }
+
+                    return changed;
+                }
+
+                public void ClearBaseline()
+                {
+                    _baselineNodes = null;
+                }
+
+                private static Dictionary<string, NodeSnapshot> BuildSnapshot(
+                    SerializedProperty stackProperty
+                )
+                {
+                    Dictionary<string, NodeSnapshot> result = new Dictionary<string, NodeSnapshot>(
+                        StringComparer.Ordinal
+                    );
+                    if (stackProperty == null)
+                    {
+                        return result;
+                    }
+
+                    SerializedProperty statesProperty = stackProperty.FindPropertyRelative("_states");
+                    if (statesProperty == null || statesProperty.arraySize == 0)
+                    {
+                        return result;
+                    }
+
+                    Dictionary<int, NodeSnapshot> indexMap = new Dictionary<int, NodeSnapshot>();
+                    Dictionary<string, int> occurrenceCounts = new Dictionary<string, int>(
+                        StringComparer.Ordinal
+                    );
+
+                    for (int i = 0; i < statesProperty.arraySize; i++)
+                    {
+                        SerializedProperty referenceProperty = statesProperty.GetArrayElementAtIndex(i);
+                        SerializedProperty stateProperty = referenceProperty.FindPropertyRelative("_state");
+                        SerializedProperty initialProperty = referenceProperty.FindPropertyRelative(
+                            "_setAsInitial"
+                        );
+
+                        UnityEngine.Object stateObject =
+                            stateProperty != null ? stateProperty.objectReferenceValue : null;
+                        bool hasState = stateObject != null;
+                        string nodeKey = BuildNodeKey(stateObject);
+
+                        int occurrence;
+                        occurrenceCounts.TryGetValue(nodeKey, out occurrence);
+                        string uniqueId = BuildUniqueId(nodeKey, occurrence);
+                        occurrenceCounts[nodeKey] = occurrence + 1;
+
+                        bool isInitial = initialProperty != null && initialProperty.boolValue;
+
+                        NodeSnapshot snapshot = new NodeSnapshot(uniqueId, nodeKey, i, hasState, isInitial);
+                        result[uniqueId] = snapshot;
+                        indexMap[i] = snapshot;
+                    }
+
+                    SerializedProperty transitionsProperty = stackProperty.FindPropertyRelative("_transitions");
+                    if (transitionsProperty != null && transitionsProperty.arraySize > 0)
+                    {
+                        for (int i = 0; i < transitionsProperty.arraySize; i++)
+                        {
+                            SerializedProperty entry = transitionsProperty.GetArrayElementAtIndex(i);
+                            int fromIndex = SafeGetInt(entry, "_fromIndex");
+                            if (!indexMap.TryGetValue(fromIndex, out NodeSnapshot fromSnapshot))
+                            {
+                                continue;
+                            }
+
+                            int toIndex = SafeGetInt(entry, "_toIndex");
+                            string targetId;
+                            if (indexMap.TryGetValue(toIndex, out NodeSnapshot targetSnapshot))
+                            {
+                                targetId = targetSnapshot.UniqueId;
+                            }
+                            else
+                            {
+                                targetId = BuildMissingTargetKey(toIndex);
+                            }
+
+                            string label = SafeGetString(entry, "_label");
+                            string tooltip = SafeGetString(entry, "_tooltip");
+                            TransitionCause cause = GetTransitionCause(entry);
+                            TransitionFlags flags = GetTransitionFlags(entry);
+
+                            EdgeSignature signature = new EdgeSignature(
+                                targetId,
+                                label,
+                                tooltip,
+                                (int)cause,
+                                (int)flags
+                            );
+                            fromSnapshot.Outgoing.Add(signature);
+                        }
+                    }
+
+                    foreach (KeyValuePair<string, NodeSnapshot> pair in result)
+                    {
+                        NodeSnapshot snapshot = pair.Value;
+                        snapshot.SortOutgoing();
+                    }
+
+                    return result;
+                }
+
+                internal static string BuildNodeKey(UnityEngine.Object stateObject)
+                {
+                    if (stateObject == null)
+                    {
+                        return "<missing>";
+                    }
+
+                    try
+                    {
+                        GlobalObjectId globalId = GlobalObjectId.GetGlobalObjectIdSlow(stateObject);
+                        return globalId.ToString();
+                    }
+                    catch (Exception)
+                    {
+                        return "instance:" + stateObject.GetInstanceID().ToString();
+                    }
+                }
+
+                internal static string BuildUniqueId(string key, int occurrence)
+                {
+                    string safeKey = key ?? "<missing>";
+                    return safeKey + "|" + occurrence.ToString();
+                }
+
+                private static string BuildMissingTargetKey(int index)
+                {
+                    return "missing-target:" + index.ToString();
+                }
+
+                private sealed class NodeSnapshot
+                {
+                    public NodeSnapshot(
+                        string uniqueId,
+                        string key,
+                        int index,
+                        bool hasState,
+                        bool isInitial
+                    )
+                    {
+                        UniqueId = uniqueId;
+                        Key = key;
+                        Index = index;
+                        HasState = hasState;
+                        IsInitial = isInitial;
+                        Outgoing = new List<EdgeSignature>();
+                    }
+
+                    public string UniqueId { get; }
+                    public string Key { get; }
+                    public int Index { get; }
+                    public bool HasState { get; }
+                    public bool IsInitial { get; }
+                    public List<EdgeSignature> Outgoing { get; }
+
+                    public void SortOutgoing()
+                    {
+                        Outgoing.Sort();
+                    }
+
+                    public static bool AreEquivalent(NodeSnapshot baseline, NodeSnapshot current)
+                    {
+                        if (baseline == null || current == null)
+                        {
+                            return false;
+                        }
+
+                        if (baseline.HasState != current.HasState)
+                        {
+                            return false;
+                        }
+
+                        if (baseline.IsInitial != current.IsInitial)
+                        {
+                            return false;
+                        }
+
+                        if (baseline.Index != current.Index)
+                        {
+                            return false;
+                        }
+
+                        if (baseline.Outgoing.Count != current.Outgoing.Count)
+                        {
+                            return false;
+                        }
+
+                        for (int i = 0; i < baseline.Outgoing.Count; i++)
+                        {
+                            if (!baseline.Outgoing[i].Equals(current.Outgoing[i]))
+                            {
+                                return false;
+                            }
+                        }
+
+                        return true;
+                    }
+                }
+
+                private readonly struct EdgeSignature : IEquatable<EdgeSignature>, IComparable<EdgeSignature>
+                {
+                    public EdgeSignature(
+                        string targetUniqueId,
+                        string label,
+                        string tooltip,
+                        int cause,
+                        int flags
+                    )
+                    {
+                        TargetUniqueId = targetUniqueId ?? string.Empty;
+                        Label = label ?? string.Empty;
+                        Tooltip = tooltip ?? string.Empty;
+                        Cause = cause;
+                        Flags = flags;
+                    }
+
+                    public string TargetUniqueId { get; }
+                    public string Label { get; }
+                    public string Tooltip { get; }
+                    public int Cause { get; }
+                    public int Flags { get; }
+
+                    public bool Equals(EdgeSignature other)
+                    {
+                        return string.Equals(TargetUniqueId, other.TargetUniqueId, StringComparison.Ordinal)
+                            && string.Equals(Label, other.Label, StringComparison.Ordinal)
+                            && string.Equals(Tooltip, other.Tooltip, StringComparison.Ordinal)
+                            && Cause == other.Cause
+                            && Flags == other.Flags;
+                    }
+
+                    public override bool Equals(object obj)
+                    {
+                        return obj is EdgeSignature other && Equals(other);
+                    }
+
+                    public override int GetHashCode()
+                    {
+                        int hashCode = StringComparer.Ordinal.GetHashCode(TargetUniqueId);
+                        hashCode = (hashCode * 397) + StringComparer.Ordinal.GetHashCode(Label);
+                        hashCode = (hashCode * 397) + StringComparer.Ordinal.GetHashCode(Tooltip);
+                        hashCode = (hashCode * 397) + Cause.GetHashCode();
+                        hashCode = (hashCode * 397) + Flags.GetHashCode();
+                        return hashCode;
+                    }
+
+                    public int CompareTo(EdgeSignature other)
+                    {
+                        int comparison = string.Compare(TargetUniqueId, other.TargetUniqueId, StringComparison.Ordinal);
+                        if (comparison != 0)
+                        {
+                            return comparison;
+                        }
+
+                        comparison = string.Compare(Label, other.Label, StringComparison.Ordinal);
+                        if (comparison != 0)
+                        {
+                            return comparison;
+                        }
+
+                        comparison = string.Compare(Tooltip, other.Tooltip, StringComparison.Ordinal);
+                        if (comparison != 0)
+                        {
+                            return comparison;
+                        }
+
+                        comparison = Cause.CompareTo(other.Cause);
+                        if (comparison != 0)
+                        {
+                            return comparison;
+                        }
+
+                        return Flags.CompareTo(other.Flags);
+                    }
+                }
+            }
+
             public sealed class StateNode : Node
             {
                 private readonly StateStackGraphView _owner;
@@ -1749,7 +2167,11 @@ namespace WallstopStudios.DxState.Editor.State
                 private readonly Color _missingColor = new Color(0.6f, 0.2f, 0.2f, 1f);
                 private readonly Color _activeColor = new Color(0.35f, 0.45f, 0.75f, 1f);
                 private readonly Color _currentColor = new Color(0.4f, 0.7f, 0.95f, 1f);
+                private readonly Color _changedBorderColor = new Color(0.95f, 0.55f, 0.1f, 1f);
 
+                private bool _isModified;
+
+                public string UniqueId { get; set; }
                 public UnityEngine.Object StateObject { get; set; }
                 public IState ResolvedState { get; }
                 public string StateName { get; }
@@ -1847,6 +2269,34 @@ namespace WallstopStudios.DxState.Editor.State
                     _owner.NotifySelectionChange();
                 }
 
+                public void SetChangeHighlight(bool isModified)
+                {
+                    _isModified = isModified;
+                    ApplyChangeHighlight();
+                }
+
+                private void ApplyChangeHighlight()
+                {
+                    if (_isModified)
+                    {
+                        mainContainer.style.borderTopWidth = 2f;
+                        mainContainer.style.borderRightWidth = 2f;
+                        mainContainer.style.borderBottomWidth = 2f;
+                        mainContainer.style.borderLeftWidth = 2f;
+                        mainContainer.style.borderTopColor = _changedBorderColor;
+                        mainContainer.style.borderRightColor = _changedBorderColor;
+                        mainContainer.style.borderBottomColor = _changedBorderColor;
+                        mainContainer.style.borderLeftColor = _changedBorderColor;
+                    }
+                    else
+                    {
+                        mainContainer.style.borderTopWidth = 0f;
+                        mainContainer.style.borderRightWidth = 0f;
+                        mainContainer.style.borderBottomWidth = 0f;
+                        mainContainer.style.borderLeftWidth = 0f;
+                    }
+                }
+
                 public void SetActiveState(bool isActive, bool isCurrent)
                 {
                     Color color = DetermineBaseColor();
@@ -1863,6 +2313,7 @@ namespace WallstopStudios.DxState.Editor.State
                     }
 
                     mainContainer.style.backgroundColor = color;
+                    ApplyChangeHighlight();
                 }
 
                 private Color DetermineBaseColor()
@@ -1919,6 +2370,7 @@ namespace WallstopStudios.DxState.Editor.State
                             _metricsLabel.text = string.Empty;
                         }
                     }
+                    ApplyChangeHighlight();
                 }
 
                 public override void BuildContextualMenu(ContextualMenuPopulateEvent evt)

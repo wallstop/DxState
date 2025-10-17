@@ -38,10 +38,10 @@
      - Swap transient collections in `StateMachine<T>` and `StateStack` over to `WallstopArrayPool`/`WallstopFastArrayPool` where appropriate (transition queues, history buffers, temporary lists). (In Progress – queues/history updated; assess additional caches.)
      - Introduce scoped helpers that rent/release buffers during transition execution and update loops without changing the public API.
      - Document pool expectations (e.g. lifetime, thread restrictions) so users understand the trade-offs. (Completed – README and authoring docs now cover disposal/usage guidance.)
-   - Transition rule pooling
-     - Provide a lightweight `PooledTransitionRule` wrapper that captures delegates or structs and recycles them via `WallstopArrayPool`.
-     - Add opt-in factory methods (`StateMachineBuilder<T>.RentTransition(...)`) so heavy projects can limit allocations while preserving compatibility with existing code.
-     - Ensure pooled rules are disposed or returned correctly on machine shutdown to avoid leaking closures.
+   - Transition rule pooling (In Progress – pooled transition rules now rent from the shared pool, builder helpers cover delegates and rule structs, and machines release rentals on dispose; evaluate runtime diagnostics before marking complete.)
+     - [x] Provide a lightweight `PooledTransitionRule` wrapper that captures delegates or structs and recycles them via `WallstopArrayPool`.
+     - [x] Add opt-in factory methods (`StateMachineBuilder<T>.RentTransition(...)`) so heavy projects can limit allocations while preserving compatibility with existing code.
+     - [x] Ensure pooled rules are disposed or returned correctly on machine shutdown to avoid leaking closures.
    - Benchmark guidance
      - Capture before/after profiler timings for high frequency transition scenarios using the existing `DXSTATE_PROFILING` markers. (Completed – optional profiler scopes already wrap stack/machine transition/update paths; expand docs once pooling work lands.)
 
@@ -56,5 +56,5 @@
    - Allow GraphView to embed references to external assets (Animator Controllers, Timeline assets) with context-specific icons and metadata. (Completed – State graph inspector now surfaces Animator/Timeline references for selected states.)
 
 8. [ ] Collaborative tooling niceties.
-   - Add change tracking annotations in GraphView (highlight nodes modified since last save) to aid code reviews.
-   - Provide CLI utilities to export diagnostics snapshots for automated bug reports or CI validation.
+   - [x] Add change tracking annotations in GraphView (highlight nodes modified since last save) to aid code reviews. (Completed – GraphView now snapshots state and transition signatures, highlights modified nodes, and exposes a Mark Saved control to reset baselines.)
+   - [ ] Provide CLI utilities to export diagnostics snapshots for automated bug reports or CI validation.

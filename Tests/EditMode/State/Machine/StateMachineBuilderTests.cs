@@ -55,6 +55,56 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Machine
         }
 
         [Test]
+        public void RentTransitionWithDelegateTransitionsWhenConditionSatisfied()
+        {
+            TestState first = new TestState("First");
+            TestState second = new TestState("Second");
+            bool shouldTransition = false;
+            StateMachineBuilder<TestState> builder = new StateMachineBuilder<TestState>();
+            builder.RentTransition(first, second, () => shouldTransition);
+
+            StateMachine<TestState> machine = builder.Build(first);
+            try
+            {
+                machine.Update();
+                Assert.AreSame(first, machine.CurrentState);
+
+                shouldTransition = true;
+                machine.Update();
+                Assert.AreSame(second, machine.CurrentState);
+            }
+            finally
+            {
+                machine.Dispose();
+            }
+        }
+
+        [Test]
+        public void RentAnyTransitionWithDelegateEvaluatesForGlobalTransition()
+        {
+            TestState first = new TestState("First");
+            TestState second = new TestState("Second");
+            bool triggerGlobal = false;
+            StateMachineBuilder<TestState> builder = new StateMachineBuilder<TestState>();
+            builder.RentAnyTransition(second, () => triggerGlobal);
+
+            StateMachine<TestState> machine = builder.Build(first);
+            try
+            {
+                machine.Update();
+                Assert.AreSame(first, machine.CurrentState);
+
+                triggerGlobal = true;
+                machine.Update();
+                Assert.AreSame(second, machine.CurrentState);
+            }
+            finally
+            {
+                machine.Dispose();
+            }
+        }
+
+        [Test]
         public void ComponentTransitionsRespectShouldEnter()
         {
             TestComponentState idle = new TestComponentState("Idle")
