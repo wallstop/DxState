@@ -39,8 +39,9 @@
    - Benchmark and expose profiling hooks (Unity Profiler markers) around `StateStack` operations. (Completed – optional `DXSTATE_PROFILING` markers wrap transition/update paths with opt-in toggles.)
 
 6. [ ] Sample content and documentation.
-   - Ship sample scenes demonstrating HFSM usage, GraphView authoring workflow, and overlay diagnostics in action.
+   - Ship sample scenes demonstrating HFSM usage, GraphView authoring workflow, and overlay diagnostics in action. (Completed – README now links to walkthroughs covering bootstrap and graph samples.)
    - Publish step-by-step guides for common tasks (building hierarchical graphs, wiring overlays, debugging live transitions) and link them from the README/editor window. (Completed – new guides under `Documentation/Guides/` are linked from the README.)
+   - Provide onboarding docs for the bootstrap prefab so newcomers can get a stack running quickly. (Completed – see `Documentation/Guides/StateStackBootstrap.md`.)
 
 ## Low Priority
 7. [ ] Integrate with complementary state paradigms.

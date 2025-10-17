@@ -206,6 +206,8 @@ DxState is Wallstop Studios' state management package for Unity 2021.3, combinin
 - Review [State Authoring Best Practices](Documentation/StateAuthoring.md) for guidance on choosing between ScriptableObject and MonoBehaviour states, meeting lifecycle contracts, and wiring dependencies safely.
 - Follow the [Building Hierarchical Graphs](Documentation/Guides/BuildingHierarchicalGraphs.md) walkthrough to author complex stacks in the State Graph view.
 - Use the [Live Diagnostics Walkthrough](Documentation/Guides/LiveDiagnosticsWalkthrough.md) to configure overlays, snapshots, and automation hooks for runtime monitoring.
+- Start with the [State Stack Bootstrap Sample Walkthrough](Documentation/Guides/StateStackBootstrap.md) to drop a ready-to-use stack prefab into any scene.
+- Explore the [Hierarchical State Graph Sample Walkthrough](Documentation/Guides/HFSMSampleWalkthrough.md) to inspect the included multi-stack scene and graph asset.
 - Open **Window ▸ Wallstop Studios ▸ DxState ▸ State Stack Debugger** to monitor stacks in a dedicated editor window, push new states by name, and inspect diagnostics without selecting the manager object.
 - Drop the `StateStackDiagnosticsOverlay` MonoBehaviour on the same object as `StateStackManager` (included in the sample prefab) to toggle an in-game overlay that lists the active stack and recent events (default hotkey: `F9`).
   Use the toolbar buttons to cycle between floating/docked presets or lock the overlay to avoid accidental drags, pause/step through diagnostics snapshots, pin states you care about, switch to the timeline tab to visualize recent transitions as a sparkline, and apply event-type filters to focus on actionable entries.
