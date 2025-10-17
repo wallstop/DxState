@@ -137,6 +137,7 @@ namespace WallstopStudios.DxState.State.Stack
         private static readonly IProgress<float> _noOpProgress = new NullProgress();
         private TransitionCompletionSource _transitionWaiter;
         private readonly Queue<QueuedTransition> _transitionQueue;
+        private PooledResource<Queue<QueuedTransition>> _transitionQueueLease;
         private readonly TransitionHistoryBuffer _transitionHistory;
 #if DXSTATE_PROFILING
         private static readonly ProfilerMarker _transitionMarker = new ProfilerMarker("DxState.StateStack.Transition");
@@ -157,7 +158,9 @@ namespace WallstopStudios.DxState.State.Stack
             _masterProgress = new StateTransitionProgressReporter(this);
             _mainThreadId = Thread.CurrentThread.ManagedThreadId;
             _transitionHistory = new TransitionHistoryBuffer(DefaultTransitionHistoryCapacity);
-            _transitionQueue = new Queue<QueuedTransition>();
+            _transitionQueueLease = Buffers<QueuedTransition>.Queue.Get(
+                out _transitionQueue
+            );
         }
 
         private bool _disposed;
@@ -177,6 +180,8 @@ namespace WallstopStudios.DxState.State.Stack
 
             _disposed = true;
             _transitionQueue.Clear();
+            _transitionQueueLease.Dispose();
+            _transitionQueueLease = default;
             _transitionHistory.Dispose();
         }
 

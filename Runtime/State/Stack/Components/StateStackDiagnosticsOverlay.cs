@@ -506,7 +506,12 @@ namespace WallstopStudios.DxState.State.Stack.Components
             GUILayout.BeginHorizontal(_boxStyle);
             StateStackDiagnostics diagnostics = _stateStackManager.Diagnostics;
             GUILayout.Label(
-                $"Queue: {diagnostics.TransitionQueueDepth}",
+                string.Format(
+                    "Queue: {0} (max {1}, avg {2:F1})",
+                    diagnostics.TransitionQueueDepth,
+                    diagnostics.MaxTransitionQueueDepth,
+                    diagnostics.AverageTransitionQueueDepth
+                ),
                 _labelStyle,
                 GUILayout.ExpandWidth(false)
             );
@@ -1104,7 +1109,12 @@ namespace WallstopStudios.DxState.State.Stack.Components
             builder.AppendLine($"Previous: {FormatStateName(_stateStackManager.PreviousState)}");
             builder.AppendLine($"Stack Depth: {_stateStackManager.Stack.Count}");
             builder.AppendLine(
-                $"Queue Depth: {_stateStackManager.Diagnostics.TransitionQueueDepth}"
+                string.Format(
+                    "Queue Depth: {0} (max {1}, avg {2:F1})",
+                    _stateStackManager.Diagnostics.TransitionQueueDepth,
+                    _stateStackManager.Diagnostics.MaxTransitionQueueDepth,
+                    _stateStackManager.Diagnostics.AverageTransitionQueueDepth
+                )
             );
             builder.AppendLine(
                 $"Deferred Pending/Lifetime: {_stateStackManager.Diagnostics.PendingDeferredTransitions}/{_stateStackManager.Diagnostics.LifetimeDeferredTransitions}"

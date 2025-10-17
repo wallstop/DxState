@@ -110,6 +110,14 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Diagnostics
             Assert.AreEqual(1, diagnostics.TransitionQueueDepth);
             Assert.AreEqual(1, diagnostics.PendingDeferredTransitions);
             Assert.AreEqual(1, diagnostics.LifetimeDeferredTransitions);
+            Assert.That(
+                diagnostics.MaxTransitionQueueDepth,
+                Is.GreaterThanOrEqualTo(1)
+            );
+            Assert.That(
+                diagnostics.AverageTransitionQueueDepth,
+                Is.GreaterThanOrEqualTo(0f)
+            );
 
             yield return WaitForValueTask(firstPush);
             yield return WaitForValueTask(secondPush);
@@ -118,6 +126,14 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Stack.Diagnostics
             Assert.AreEqual(0, diagnostics.TransitionQueueDepth);
             Assert.AreEqual(0, diagnostics.PendingDeferredTransitions);
             Assert.AreEqual(1, diagnostics.LifetimeDeferredTransitions);
+            Assert.That(
+                diagnostics.MaxTransitionQueueDepth,
+                Is.GreaterThanOrEqualTo(1)
+            );
+            Assert.That(
+                diagnostics.AverageTransitionQueueDepth,
+                Is.GreaterThanOrEqualTo(0f)
+            );
         }
 
         private static IEnumerator WaitForValueTask(ValueTask valueTask)

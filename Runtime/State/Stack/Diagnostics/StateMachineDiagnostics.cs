@@ -15,6 +15,12 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
 
         DateTime? LastTransitionUtc { get; }
 
+        int PendingTransitionQueueDepth { get; }
+
+        int MaxPendingTransitionQueueDepth { get; }
+
+        float AveragePendingTransitionQueueDepth { get; }
+
         void CopyStateMetrics(List<StateMachineStateMetricsRecord> buffer);
 
         void CopyRecentEvents(List<StateMachineDiagnosticEventRecord> buffer, int maxCount);
@@ -38,6 +44,10 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
         private TransitionExecutionContext<TState> _lastTransition;
         private DateTime _lastTransitionUtc;
         private bool _isDisposed;
+        private int _pendingQueueDepth;
+        private int _maxPendingQueueDepth;
+        private long _pendingQueueDepthSamples;
+        private long _pendingQueueDepthTotal;
 
         public StateMachineDiagnostics(int capacity)
         {
@@ -91,6 +101,59 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
                 try
                 {
                     return _hasLastTransition ? _lastTransitionUtc : (DateTime?)null;
+                }
+                finally
+                {
+                    _lock.ExitReadLock();
+                }
+            }
+        }
+
+        public int PendingTransitionQueueDepth
+        {
+            get
+            {
+                _lock.EnterReadLock();
+                try
+                {
+                    return _pendingQueueDepth;
+                }
+                finally
+                {
+                    _lock.ExitReadLock();
+                }
+            }
+        }
+
+        public int MaxPendingTransitionQueueDepth
+        {
+            get
+            {
+                _lock.EnterReadLock();
+                try
+                {
+                    return _maxPendingQueueDepth;
+                }
+                finally
+                {
+                    _lock.ExitReadLock();
+                }
+            }
+        }
+
+        public float AveragePendingTransitionQueueDepth
+        {
+            get
+            {
+                _lock.EnterReadLock();
+                try
+                {
+                    if (_pendingQueueDepthSamples == 0)
+                    {
+                        return 0f;
+                    }
+
+                    return (float)_pendingQueueDepthTotal / _pendingQueueDepthSamples;
                 }
                 finally
                 {
@@ -288,6 +351,36 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
             }
         }
 
+        public void RecordPendingQueueDepth(int depth)
+        {
+            if (depth < 0)
+            {
+                depth = 0;
+            }
+
+            _lock.EnterWriteLock();
+            try
+            {
+                if (_isDisposed)
+                {
+                    return;
+                }
+
+                _pendingQueueDepth = depth;
+                if (depth > _maxPendingQueueDepth)
+                {
+                    _maxPendingQueueDepth = depth;
+                }
+
+                _pendingQueueDepthSamples++;
+                _pendingQueueDepthTotal += depth;
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
+            }
+        }
+
         public void Clear()
         {
             _lock.EnterWriteLock();
@@ -304,6 +397,10 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
                 _transitionCount = 0;
                 _deferredCount = 0;
                 _hasLastTransition = false;
+                _pendingQueueDepth = 0;
+                _maxPendingQueueDepth = 0;
+                _pendingQueueDepthSamples = 0;
+                _pendingQueueDepthTotal = 0;
             }
             finally
             {

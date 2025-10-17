@@ -1146,7 +1146,12 @@ namespace WallstopStudios.DxState.Editor.State
                     if (diagnostics != null && diagnostics.TransitionQueueDepth > 0)
                     {
                         DrawStatusBadge(
-                            $"Queue {diagnostics.TransitionQueueDepth}",
+                            string.Format(
+                                "Queue {0} (max {1}, avg {2:F1})",
+                                diagnostics.TransitionQueueDepth,
+                                diagnostics.MaxTransitionQueueDepth,
+                                diagnostics.AverageTransitionQueueDepth
+                            ),
                             new Color(0.95f, 0.65f, 0.2f)
                         );
                     }
@@ -1231,7 +1236,14 @@ namespace WallstopStudios.DxState.Editor.State
             if (diagnostics != null)
             {
                 builder.AppendLine(
-                    $"Queue Depth: {diagnostics.TransitionQueueDepth}, Deferred Pending: {diagnostics.PendingDeferredTransitions}, Deferred Lifetime: {diagnostics.LifetimeDeferredTransitions}"
+                    string.Format(
+                        "Queue Depth: {0} (max {1}, avg {2:F1}), Deferred Pending: {3}, Deferred Lifetime: {4}",
+                        diagnostics.TransitionQueueDepth,
+                        diagnostics.MaxTransitionQueueDepth,
+                        diagnostics.AverageTransitionQueueDepth,
+                        diagnostics.PendingDeferredTransitions,
+                        diagnostics.LifetimeDeferredTransitions
+                    )
                 );
                 builder.AppendLine(
                     $"Average Duration: {diagnostics.AverageTransitionDuration:F3}s, Longest: {diagnostics.LongestTransitionDuration:F3}s"
@@ -1327,7 +1339,14 @@ namespace WallstopStudios.DxState.Editor.State
             builder.AppendLine($"Previous: {FormatStateName(_targetManager.PreviousState)}");
             builder.AppendLine($"Stack Depth: {_targetManager.Stack.Count}");
             builder.AppendLine(
-                $"Queue Depth: {diagnostics.TransitionQueueDepth}, Deferred Pending: {diagnostics.PendingDeferredTransitions}, Deferred Lifetime: {diagnostics.LifetimeDeferredTransitions}"
+                string.Format(
+                    "Queue Depth: {0} (max {1}, avg {2:F1}), Deferred Pending: {3}, Deferred Lifetime: {4}",
+                    diagnostics.TransitionQueueDepth,
+                    diagnostics.MaxTransitionQueueDepth,
+                    diagnostics.AverageTransitionQueueDepth,
+                    diagnostics.PendingDeferredTransitions,
+                    diagnostics.LifetimeDeferredTransitions
+                )
             );
             builder.AppendLine(
                 $"Average Duration: {diagnostics.AverageTransitionDuration:F3}s, Longest: {diagnostics.LongestTransitionDuration:F3}s"

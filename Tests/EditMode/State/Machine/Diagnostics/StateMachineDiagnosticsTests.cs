@@ -68,6 +68,17 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Machine.Diagnostics
             List<StateMachineStateMetricsRecord> metricsRecords = new List<StateMachineStateMetricsRecord>();
             diagnostics.CopyStateMetrics(metricsRecords);
             Assert.AreEqual(2, metricsRecords.Count);
+
+            Assert.AreEqual(0, diagnostics.PendingTransitionQueueDepth);
+            Assert.AreEqual(1, diagnostics.MaxPendingTransitionQueueDepth);
+            Assert.That(
+                diagnostics.AveragePendingTransitionQueueDepth,
+                Is.GreaterThanOrEqualTo(0f)
+            );
+            Assert.That(
+                diagnostics.AveragePendingTransitionQueueDepth,
+                Is.LessThanOrEqualTo(1f)
+            );
         }
 
         [Test]
@@ -133,6 +144,14 @@ namespace WallstopStudios.DxState.Tests.EditMode.State.Machine.Diagnostics
             }
 
             Assert.IsTrue(sawDeferred);
+            Assert.That(
+                diagnostics.MaxPendingTransitionQueueDepth,
+                Is.GreaterThanOrEqualTo(1)
+            );
+            Assert.That(
+                diagnostics.AveragePendingTransitionQueueDepth,
+                Is.GreaterThan(0f)
+            );
         }
 
         [Test]

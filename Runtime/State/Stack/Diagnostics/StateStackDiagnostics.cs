@@ -63,6 +63,9 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
         private int _transitionQueueDepth;
         private int _pendingDeferredTransitions;
         private int _lifetimeDeferredTransitions;
+        private int _maxTransitionQueueDepth;
+        private long _queueDepthSamples;
+        private long _queueDepthTotal;
         private bool _isDisposed;
 
         public StateStackDiagnostics(StateStack stateStack, int maxEventCount, bool logEvents)
@@ -103,6 +106,21 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
 
         public int LifetimeDeferredTransitions => _lifetimeDeferredTransitions;
 
+        public int MaxTransitionQueueDepth => _maxTransitionQueueDepth;
+
+        public float AverageTransitionQueueDepth
+        {
+            get
+            {
+                if (_queueDepthSamples == 0)
+                {
+                    return 0f;
+                }
+
+                return (float)_queueDepthTotal / _queueDepthSamples;
+            }
+        }
+
         public void Dispose()
         {
             if (_isDisposed)
@@ -113,6 +131,13 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
             _isDisposed = true;
             Unsubscribe();
             _metrics.Dispose();
+        }
+
+        public void ResetQueueMetrics()
+        {
+            _maxTransitionQueueDepth = _transitionQueueDepth;
+            _queueDepthSamples = 0;
+            _queueDepthTotal = 0;
         }
 
         private void Subscribe()
@@ -191,7 +216,15 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
 
         private void HandleQueueDepthChanged(int depth)
         {
-            _transitionQueueDepth = Math.Max(0, depth);
+            int clampedDepth = Math.Max(0, depth);
+            _transitionQueueDepth = clampedDepth;
+            if (clampedDepth > _maxTransitionQueueDepth)
+            {
+                _maxTransitionQueueDepth = clampedDepth;
+            }
+
+            _queueDepthSamples++;
+            _queueDepthTotal += clampedDepth;
         }
 
         private void HandleDeferredTransitionMetricsChanged(

@@ -2,7 +2,6 @@
 namespace WallstopStudios.DxState.Editor.State
 {
     using System;
-    using System;
     using System.IO;
     using System.Reflection;
     using UnityEditor;

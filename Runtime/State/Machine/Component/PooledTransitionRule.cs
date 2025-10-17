@@ -1,13 +1,19 @@
 namespace WallstopStudios.DxState.State.Machine.Component
 {
     using System;
-    using System.Collections.Generic;
+    using WallstopStudios.UnityHelpers.Utils;
 
     public sealed class PooledTransitionRule : ITransitionRule
     {
         private Func<bool> _delegateRule;
         private ITransitionRule _structRule;
         private bool _isActive;
+        private PooledResource<PooledTransitionRule> _lease;
+
+        private static readonly WallstopGenericPool<PooledTransitionRule> Pool =
+            new WallstopGenericPool<PooledTransitionRule>(
+                () => new PooledTransitionRule()
+            );
 
         private PooledTransitionRule()
         {
@@ -20,7 +26,10 @@ namespace WallstopStudios.DxState.State.Machine.Component
                 throw new ArgumentNullException(nameof(rule));
             }
 
-            PooledTransitionRule wrapper = TransitionRulePool.Rent();
+            PooledResource<PooledTransitionRule> lease = Pool.Get(
+                out PooledTransitionRule wrapper
+            );
+            wrapper._lease = lease;
             wrapper._delegateRule = rule;
             wrapper._structRule = null;
             wrapper._isActive = true;
@@ -34,7 +43,10 @@ namespace WallstopStudios.DxState.State.Machine.Component
                 throw new ArgumentNullException(nameof(rule));
             }
 
-            PooledTransitionRule wrapper = TransitionRulePool.Rent();
+            PooledResource<PooledTransitionRule> lease = Pool.Get(
+                out PooledTransitionRule wrapper
+            );
+            wrapper._lease = lease;
             wrapper._delegateRule = null;
             wrapper._structRule = rule;
             wrapper._isActive = true;
@@ -61,39 +73,8 @@ namespace WallstopStudios.DxState.State.Machine.Component
             _isActive = false;
             _delegateRule = null;
             _structRule = null;
-            TransitionRulePool.Return(this);
-        }
-
-        private static class TransitionRulePool
-        {
-            private static readonly object Sync = new object();
-            private static readonly Stack<PooledTransitionRule> Pool = new Stack<PooledTransitionRule>();
-
-            internal static PooledTransitionRule Rent()
-            {
-                lock (Sync)
-                {
-                    if (Pool.Count > 0)
-                    {
-                        return Pool.Pop();
-                    }
-                }
-
-                return new PooledTransitionRule();
-            }
-
-            internal static void Return(PooledTransitionRule rule)
-            {
-                if (rule == null)
-                {
-                    return;
-                }
-
-                lock (Sync)
-                {
-                    Pool.Push(rule);
-                }
-            }
+            _lease.Dispose();
+            _lease = default;
         }
     }
 }

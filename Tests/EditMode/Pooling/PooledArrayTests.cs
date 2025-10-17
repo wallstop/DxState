@@ -3,6 +3,7 @@ namespace WallstopStudios.DxState.Tests.EditMode.Pooling
     using System;
     using NUnit.Framework;
     using WallstopStudios.DxState.Pooling;
+    using WallstopStudios.UnityHelpers.Utils;
 
     public sealed class PooledArrayTests
     {
@@ -16,12 +17,20 @@ namespace WallstopStudios.DxState.Tests.EditMode.Pooling
         [Test]
         public void ReturnClearsBufferWhenRequested()
         {
-            string[] buffer = WallstopArrayPool<string>.Rent(3, clear: false);
-            buffer[0] = "CachedValue";
+            using (PooledResource<string[]> initialLease = WallstopArrayPool<string>.Get(
+                       3,
+                       out string[] buffer
+                   ))
+            {
+                buffer[0] = "CachedValue";
+            }
 
-            WallstopArrayPool<string>.Return(buffer, clear: true);
+            using PooledResource<string[]> reusedLease = WallstopArrayPool<string>.Get(
+                3,
+                out string[] reused
+            );
 
-            Assert.IsNull(buffer[0]);
+            Assert.IsNull(reused[0]);
         }
     }
 }

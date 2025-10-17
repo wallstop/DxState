@@ -4,13 +4,16 @@ namespace WallstopStudios.DxState.State.Stack.Internal
     using System.Threading;
     using System.Threading.Tasks;
     using System.Threading.Tasks.Sources;
+    using WallstopStudios.UnityHelpers.Utils;
 
     internal sealed class TransitionCompletionSource : IValueTaskSource
     {
         private const short InitialVersion = 1;
 
-        private static readonly object PoolGate = new object();
-        private static TransitionCompletionSource _cachedInstance;
+        private static readonly WallstopGenericPool<TransitionCompletionSource> Pool =
+            new WallstopGenericPool<TransitionCompletionSource>(
+                () => new TransitionCompletionSource()
+            );
 
         private readonly object _instanceGate;
 
@@ -24,6 +27,7 @@ namespace WallstopStudios.DxState.State.Stack.Internal
         private bool _inUse;
         private bool _runContinuationsAsynchronously;
         private ValueTaskSourceStatus _status;
+        private PooledResource<TransitionCompletionSource> _lease;
 
         private TransitionCompletionSource()
         {
@@ -33,20 +37,12 @@ namespace WallstopStudios.DxState.State.Stack.Internal
 
         public static TransitionCompletionSource Rent()
         {
-            lock (PoolGate)
-            {
-                if (_cachedInstance != null)
-                {
-                    TransitionCompletionSource pooled = _cachedInstance;
-                    _cachedInstance = null;
-                    pooled.PrepareForUse();
-                    return pooled;
-                }
-            }
-
-            TransitionCompletionSource created = new TransitionCompletionSource();
-            created.PrepareForUse();
-            return created;
+            PooledResource<TransitionCompletionSource> lease = Pool.Get(
+                out TransitionCompletionSource source
+            );
+            source._lease = lease;
+            source.PrepareForUse();
+            return source;
         }
 
         public ValueTask AsValueTask()
@@ -339,13 +335,8 @@ namespace WallstopStudios.DxState.State.Stack.Internal
                 _runContinuationsAsynchronously = true;
             }
 
-            lock (PoolGate)
-            {
-                if (_cachedInstance == null)
-                {
-                    _cachedInstance = this;
-                }
-            }
+            _lease.Dispose();
+            _lease = default;
         }
 
         private void EnsureInUse()

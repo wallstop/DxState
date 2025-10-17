@@ -10,7 +10,6 @@ namespace WallstopStudios.DxState.Editor.State
     using UnityEditor.UIElements;
     using UnityEngine;
     using UnityEngine.Playables;
-    using UnityEngine.Timeline;
     using UnityEngine.UIElements;
     using WallstopStudios.DxState.Editor.State.Validation;
     using WallstopStudios.DxState.State.Machine;
@@ -474,10 +473,6 @@ namespace WallstopStudios.DxState.Editor.State
             {
                 lines.Add("Animator Controller asset.");
             }
-            else if (asset is TimelineAsset)
-            {
-                lines.Add("Timeline asset.");
-            }
 
             if (lines.Count == initialCount)
             {
@@ -928,8 +923,11 @@ namespace WallstopStudios.DxState.Editor.State
                 _currentStackName = normalizedStackName;
 
                 bool assetChanged = !ReferenceEquals(_baselineAsset, graphAsset);
-                bool stackChanged =
-                    !string.Equals(_baselineStackName, normalizedStackName, StringComparison.Ordinal);
+                bool stackChanged = !string.Equals(
+                    _baselineStackName,
+                    normalizedStackName,
+                    StringComparison.Ordinal
+                );
 
                 ClearSelection();
                 StateSelected?.Invoke(null);
@@ -1079,10 +1077,7 @@ namespace WallstopStudios.DxState.Editor.State
                 );
             }
 
-            public void ApplyValidationReport(
-                StateGraphValidationReport report,
-                int stackIndex
-            )
+            public void ApplyValidationReport(StateGraphValidationReport report, int stackIndex)
             {
                 ClearValidationState();
                 if (report == null)
@@ -1116,7 +1111,12 @@ namespace WallstopStudios.DxState.Editor.State
 
                     if (issue.TargetsState)
                     {
-                        if (!stateIssues.TryGetValue(issue.StateIndex, out List<StateGraphValidationIssue> list))
+                        if (
+                            !stateIssues.TryGetValue(
+                                issue.StateIndex,
+                                out List<StateGraphValidationIssue> list
+                            )
+                        )
                         {
                             list = new List<StateGraphValidationIssue>();
                             stateIssues[issue.StateIndex] = list;
@@ -1154,7 +1154,9 @@ namespace WallstopStudios.DxState.Editor.State
                     node.SetValidation(severity, message);
                 }
 
-                foreach (KeyValuePair<int, List<StateGraphValidationIssue>> entry in transitionIssues)
+                foreach (
+                    KeyValuePair<int, List<StateGraphValidationIssue>> entry in transitionIssues
+                )
                 {
                     int index = entry.Key;
                     if (index < 0)
@@ -1334,7 +1336,8 @@ namespace WallstopStudios.DxState.Editor.State
                     status
                 );
 
-                IReadOnlyList<StateGraphTemplate> templates = StateGraphTemplateCache.GetTemplates();
+                IReadOnlyList<StateGraphTemplate> templates =
+                    StateGraphTemplateCache.GetTemplates();
                 if (templates.Count > 0)
                 {
                     evt.menu.AppendSeparator();
@@ -1896,7 +1899,9 @@ namespace WallstopStudios.DxState.Editor.State
                         return result;
                     }
 
-                    SerializedProperty statesProperty = stackProperty.FindPropertyRelative("_states");
+                    SerializedProperty statesProperty = stackProperty.FindPropertyRelative(
+                        "_states"
+                    );
                     if (statesProperty == null || statesProperty.arraySize == 0)
                     {
                         return result;
@@ -1909,8 +1914,11 @@ namespace WallstopStudios.DxState.Editor.State
 
                     for (int i = 0; i < statesProperty.arraySize; i++)
                     {
-                        SerializedProperty referenceProperty = statesProperty.GetArrayElementAtIndex(i);
-                        SerializedProperty stateProperty = referenceProperty.FindPropertyRelative("_state");
+                        SerializedProperty referenceProperty =
+                            statesProperty.GetArrayElementAtIndex(i);
+                        SerializedProperty stateProperty = referenceProperty.FindPropertyRelative(
+                            "_state"
+                        );
                         SerializedProperty initialProperty = referenceProperty.FindPropertyRelative(
                             "_setAsInitial"
                         );
@@ -1927,17 +1935,27 @@ namespace WallstopStudios.DxState.Editor.State
 
                         bool isInitial = initialProperty != null && initialProperty.boolValue;
 
-                        NodeSnapshot snapshot = new NodeSnapshot(uniqueId, nodeKey, i, hasState, isInitial);
+                        NodeSnapshot snapshot = new NodeSnapshot(
+                            uniqueId,
+                            nodeKey,
+                            i,
+                            hasState,
+                            isInitial
+                        );
                         result[uniqueId] = snapshot;
                         indexMap[i] = snapshot;
                     }
 
-                    SerializedProperty transitionsProperty = stackProperty.FindPropertyRelative("_transitions");
+                    SerializedProperty transitionsProperty = stackProperty.FindPropertyRelative(
+                        "_transitions"
+                    );
                     if (transitionsProperty != null && transitionsProperty.arraySize > 0)
                     {
                         for (int i = 0; i < transitionsProperty.arraySize; i++)
                         {
-                            SerializedProperty entry = transitionsProperty.GetArrayElementAtIndex(i);
+                            SerializedProperty entry = transitionsProperty.GetArrayElementAtIndex(
+                                i
+                            );
                             int fromIndex = SafeGetInt(entry, "_fromIndex");
                             if (!indexMap.TryGetValue(fromIndex, out NodeSnapshot fromSnapshot))
                             {
@@ -2078,7 +2096,9 @@ namespace WallstopStudios.DxState.Editor.State
                     }
                 }
 
-                private readonly struct EdgeSignature : IEquatable<EdgeSignature>, IComparable<EdgeSignature>
+                private readonly struct EdgeSignature
+                    : IEquatable<EdgeSignature>,
+                        IComparable<EdgeSignature>
                 {
                     public EdgeSignature(
                         string targetUniqueId,
@@ -2103,7 +2123,11 @@ namespace WallstopStudios.DxState.Editor.State
 
                     public bool Equals(EdgeSignature other)
                     {
-                        return string.Equals(TargetUniqueId, other.TargetUniqueId, StringComparison.Ordinal)
+                        return string.Equals(
+                                TargetUniqueId,
+                                other.TargetUniqueId,
+                                StringComparison.Ordinal
+                            )
                             && string.Equals(Label, other.Label, StringComparison.Ordinal)
                             && string.Equals(Tooltip, other.Tooltip, StringComparison.Ordinal)
                             && Cause == other.Cause
@@ -2127,7 +2151,11 @@ namespace WallstopStudios.DxState.Editor.State
 
                     public int CompareTo(EdgeSignature other)
                     {
-                        int comparison = string.Compare(TargetUniqueId, other.TargetUniqueId, StringComparison.Ordinal);
+                        int comparison = string.Compare(
+                            TargetUniqueId,
+                            other.TargetUniqueId,
+                            StringComparison.Ordinal
+                        );
                         if (comparison != 0)
                         {
                             return comparison;
@@ -2139,7 +2167,11 @@ namespace WallstopStudios.DxState.Editor.State
                             return comparison;
                         }
 
-                        comparison = string.Compare(Tooltip, other.Tooltip, StringComparison.Ordinal);
+                        comparison = string.Compare(
+                            Tooltip,
+                            other.Tooltip,
+                            StringComparison.Ordinal
+                        );
                         if (comparison != 0)
                         {
                             return comparison;
@@ -2323,7 +2355,8 @@ namespace WallstopStudios.DxState.Editor.State
                         return _missingColor;
                     }
 
-                    StateGraphPlaceholderState placeholder = StateObject as StateGraphPlaceholderState;
+                    StateGraphPlaceholderState placeholder =
+                        StateObject as StateGraphPlaceholderState;
                     if (placeholder != null)
                     {
                         return placeholder.AccentColor;
@@ -2418,10 +2451,7 @@ namespace WallstopStudios.DxState.Editor.State
                     }
                 }
 
-                public void SetValidation(
-                    StateGraphValidationSeverity? severity,
-                    string message
-                )
+                public void SetValidation(StateGraphValidationSeverity? severity, string message)
                 {
                     if (!severity.HasValue)
                     {
@@ -2896,8 +2926,18 @@ namespace WallstopStudios.DxState.Editor.State
                 private static readonly Color ActiveColor = new Color(0.3f, 0.85f, 1f, 1f);
                 private static readonly Color IdleColor = new Color(0.25f, 0.25f, 0.25f, 0.85f);
                 private static readonly Color DefaultLabelColor = new Color(0f, 0f, 0f, 0.6f);
-                private static readonly Color ErrorLabelColor = new Color(0.62f, 0.16f, 0.16f, 0.9f);
-                private static readonly Color WarningLabelColor = new Color(0.78f, 0.59f, 0.16f, 0.9f);
+                private static readonly Color ErrorLabelColor = new Color(
+                    0.62f,
+                    0.16f,
+                    0.16f,
+                    0.9f
+                );
+                private static readonly Color WarningLabelColor = new Color(
+                    0.78f,
+                    0.59f,
+                    0.16f,
+                    0.9f
+                );
                 private static readonly Color InfoLabelColor = new Color(0.18f, 0.45f, 0.9f, 0.9f);
 
                 private readonly StateStackGraphView _owner;
@@ -2996,10 +3036,7 @@ namespace WallstopStudios.DxState.Editor.State
                     edgeControl.MarkDirtyRepaint();
                 }
 
-                public void SetValidation(
-                    StateGraphValidationSeverity? severity,
-                    string message
-                )
+                public void SetValidation(StateGraphValidationSeverity? severity, string message)
                 {
                     if (!severity.HasValue)
                     {

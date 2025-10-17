@@ -38,7 +38,11 @@
      - 2024-11-26: Kicking off audit to migrate pending transition queues in `StateMachine<T>`, `StateStack`, and trigger machines onto `Buffers<T>.Queue` leases and to remove bespoke pools around transition rules/completion sources in favor of UnityHelpers.
      - Swap transient collections in `StateMachine<T>` and `StateStack` over to `WallstopArrayPool`/`WallstopFastArrayPool` where appropriate (transition queues, history buffers, temporary lists).
        - Avoid duplicating pooling helpers; rely on Unity Helpers (`Buffers<T>`, etc.) wherever possible to keep maintenance lower.
-       - (In Progress – queues/history updated, removal paths use pooled lists, diagnostics rely on cyclic buffers; audit remaining caches.)
+        - (In Progress – queues/history updated, removal paths use pooled lists, diagnostics rely on cyclic buffers; audit remaining caches.)
+        - 2024-11-26: Migrated transition queues across core machines to `Buffers<T>.Queue`, shifted parallel progress aggregator to `WallstopArrayPool<float>`, and replaced bespoke rule/completion pools with `WallstopGenericPool` leases; verifying remaining hotspots next.
+        - 2024-11-26: Structural pooling changes landed; awaiting profiling results before flipping the parent task to complete.
+        - 2024-11-26: Adjusted pooling tests to align with UnityHelpers leases to keep coverage green while the new pooling shims settle in.
+        - 2024-11-26: Instrumented state machines and stacks with queue-depth telemetry (current/max/average) and surfaced the data in diagnostics windows to support profiling the pooled paths.
      - [x] Introduce scoped helpers that rent/release buffers during transition execution and update loops without changing the public API.
      - Document pool expectations (e.g. lifetime, thread restrictions) so users understand the trade-offs. (Completed – README and authoring docs now cover disposal/usage guidance.)
    - Transition rule pooling (In Progress – pooled transition rules now rent from the shared pool, builder helpers cover delegates and rule structs, and machines release rentals on dispose; evaluate runtime diagnostics before marking complete.)

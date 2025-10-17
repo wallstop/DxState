@@ -1,12 +1,12 @@
 namespace WallstopStudios.DxState.State.Stack.States
 {
     using System;
-    using System.Buffers;
     using System.Collections.Generic;
     using System.ComponentModel;
     using System.Threading.Tasks;
     using UnityEngine;
     using WallstopStudios.DxState.Pooling;
+    using WallstopStudios.UnityHelpers.Utils;
 
     public enum StateGroupMode
     {
@@ -106,7 +106,10 @@ namespace WallstopStudios.DxState.State.Stack.States
                 return destination;
             }
 
-            List<IState> buffer = new List<IState>();
+            using PooledResource<List<IState>> bufferLease = Buffers<IState>.GetList(
+                0,
+                out List<IState> buffer
+            );
             foreach (IState child in source)
             {
                 buffer.Add(child);
@@ -510,6 +513,7 @@ namespace WallstopStudios.DxState.State.Stack.States
         private sealed class ParallelProgressAggregator : IDisposable
         {
             private readonly float[] _values;
+            private readonly PooledResource<float[]> _valuesLease;
             private readonly IProgress<float> _overallProgress;
             private readonly object _gate;
             private readonly int _length;
@@ -521,16 +525,11 @@ namespace WallstopStudios.DxState.State.Stack.States
                 object gate
             )
             {
-                _values = ArrayPool<float>.Shared.Rent(length);
+                _valuesLease = WallstopArrayPool<float>.Get(length, out _values);
                 _overallProgress = overallProgress;
                 _gate = gate ?? new object();
                 _length = length;
                 _sum = 0f;
-
-                for (int i = 0; i < length; i++)
-                {
-                    _values[i] = 0f;
-                }
             }
 
             public ProgressReporter CreateReporter(int index)
@@ -540,7 +539,7 @@ namespace WallstopStudios.DxState.State.Stack.States
 
             public void Dispose()
             {
-                ArrayPool<float>.Shared.Return(_values, true);
+                _valuesLease.Dispose();
             }
 
             private void Report(int index, float value)

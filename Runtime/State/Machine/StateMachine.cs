@@ -14,6 +14,7 @@ namespace WallstopStudios.DxState.State.Machine
         private readonly Dictionary<T, List<Transition<T>>> _states;
         private readonly List<Transition<T>> _globalTransitions;
         private readonly Queue<PendingTransition> _pendingTransitions;
+        private PooledResource<Queue<PendingTransition>> _pendingTransitionsLease;
         private readonly TransitionHistoryBuffer _transitionHistory;
         private readonly List<PooledTransitionRule> _pooledTransitionRules;
 #if DXSTATE_PROFILING
@@ -25,6 +26,7 @@ namespace WallstopStudios.DxState.State.Machine
 
         private bool _hasTransitionContext;
         private bool _isProcessingTransitions;
+        private int _lastPendingTransitionQueueDepth;
         private int _transitionDepth;
 
         private T _currentState;
@@ -55,7 +57,9 @@ namespace WallstopStudios.DxState.State.Machine
 
             _states = new Dictionary<T, List<Transition<T>>>();
             _globalTransitions = new List<Transition<T>>();
-            _pendingTransitions = new Queue<PendingTransition>();
+            _pendingTransitionsLease = Buffers<PendingTransition>.Queue.Get(
+                out _pendingTransitions
+            );
             _transitionHistory = new TransitionHistoryBuffer(DefaultTransitionHistoryCapacity);
             _pooledTransitionRules = new List<PooledTransitionRule>();
             HashSet<T> discoveredStates = new HashSet<T>();
@@ -164,6 +168,7 @@ namespace WallstopStudios.DxState.State.Machine
 
         public event Action<TransitionExecutionContext<T>> TransitionExecuted;
         public event Action<T, T, TransitionContext> TransitionDeferred;
+        public event Action<int> PendingTransitionQueueDepthChanged;
 
         public void Update()
         {
@@ -302,6 +307,7 @@ namespace WallstopStudios.DxState.State.Machine
 
             PendingTransition pending = new PendingTransition(newState, transition, context);
             _pendingTransitions.Enqueue(pending);
+            NotifyPendingTransitionQueueDepth();
             ProcessPendingTransitions();
         }
 
@@ -330,11 +336,13 @@ namespace WallstopStudios.DxState.State.Machine
                 {
                     PendingTransition current = _pendingTransitions.Dequeue();
                     ExecutePendingTransition(current);
+                    NotifyPendingTransitionQueueDepth();
                 }
             }
             finally
             {
                 _isProcessingTransitions = false;
+                NotifyPendingTransitionQueueDepth();
             }
         }
 
@@ -457,6 +465,8 @@ namespace WallstopStudios.DxState.State.Machine
                 _pooledTransitionRules.Clear();
             }
             _pendingTransitions.Clear();
+            _pendingTransitionsLease.Dispose();
+            _pendingTransitionsLease = default;
             _transitionHistory.Dispose();
         }
 
@@ -510,6 +520,23 @@ namespace WallstopStudios.DxState.State.Machine
             }
 
             return new TransitionContext(TransitionCause.Initialization);
+        }
+
+        private void NotifyPendingTransitionQueueDepth()
+        {
+            int depth = _pendingTransitions.Count;
+            if (depth < 0)
+            {
+                depth = 0;
+            }
+
+            if (depth == _lastPendingTransitionQueueDepth)
+            {
+                return;
+            }
+
+            _lastPendingTransitionQueueDepth = depth;
+            PendingTransitionQueueDepthChanged?.Invoke(depth);
         }
 
         private readonly struct PendingTransition

@@ -136,6 +136,15 @@ namespace WallstopStudios.DxState.Editor.State
                     ? lastTransitionUtc.Value.ToLocalTime().ToString("HH:mm:ss")
                     : "<never>"
             );
+            EditorGUILayout.LabelField(
+                "Pending Queue",
+                string.Format(
+                    "{0} (max {1}, avg {2:F2})",
+                    diagnostics.PendingTransitionQueueDepth,
+                    diagnostics.MaxPendingTransitionQueueDepth,
+                    diagnostics.AveragePendingTransitionQueueDepth
+                )
+            );
 
             diagnostics.CopyStateMetrics(_metricsBuffer);
             DrawStateMetrics();
