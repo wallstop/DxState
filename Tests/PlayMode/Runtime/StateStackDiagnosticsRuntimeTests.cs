@@ -89,7 +89,11 @@ namespace WallstopStudios.DxState.Tests.PlayMode.Runtime
                 yield return WaitForFrames(1);
 
                 Assert.IsTrue(
-                    ContainsLogEntry(capturedLogs, "Logged"),
+                    ContainsLogEntry(
+                        capturedLogs,
+                        "Logged",
+                        StateStackDiagnosticEventType.TransitionComplete
+                    ),
                     "Expected diagnostics to emit console log when logging enabled."
                 );
             }
@@ -116,11 +120,16 @@ namespace WallstopStudios.DxState.Tests.PlayMode.Runtime
             return -1;
         }
 
-        private static bool ContainsLogEntry(IEnumerable<string> logs, string stateName)
+        private static bool ContainsLogEntry(
+            IEnumerable<string> logs,
+            string stateName,
+            StateStackDiagnosticEventType eventType
+        )
         {
+            string eventLabel = eventType.ToString();
             foreach (string entry in logs)
             {
-                if (entry.Contains(stateName) && entry.Contains("Transition complete"))
+                if (entry.Contains(stateName) && entry.Contains(eventLabel))
                 {
                     return true;
                 }

@@ -4,10 +4,11 @@ namespace WallstopStudios.DxState.State.Machine
     using System.Collections.Generic;
     using Component;
     using UnityHelpers.Core.Extension;
+    using WallstopStudios.UnityHelpers.Utils;
 #if DXSTATE_PROFILING
     using Unity.Profiling;
 #endif
-    using WallstopStudios.UnityHelpers.Utils;
+
 
     public sealed class StateMachine<T> : IDisposable
     {
@@ -18,15 +19,22 @@ namespace WallstopStudios.DxState.State.Machine
         private readonly TransitionHistoryBuffer _transitionHistory;
         private readonly List<PooledTransitionRule> _pooledTransitionRules;
 #if DXSTATE_PROFILING
-        private static readonly ProfilerMarker _transitionMarker = new ProfilerMarker("DxState.StateMachine.Transition");
-        private static readonly ProfilerMarker _updateMarker = new ProfilerMarker("DxState.StateMachine.Update");
+        private static readonly ProfilerMarker _transitionMarker = new ProfilerMarker(
+            "DxState.StateMachine.Transition"
+        );
+        private static readonly ProfilerMarker _updateMarker = new ProfilerMarker(
+            "DxState.StateMachine.Update"
+        );
 #endif
 
         private TransitionExecutionContext<T> _latestTransitionContext;
 
         private bool _hasTransitionContext;
         private bool _isProcessingTransitions;
-        private int _lastPendingTransitionQueueDepth;
+        private int _lastPendingTransitionQueueDepth = -1;
+        private int _maxPendingTransitionQueueDepth;
+        private long _pendingQueueSamples;
+        private long _pendingQueueTotal;
         private int _transitionDepth;
 
         private T _currentState;
@@ -162,6 +170,31 @@ namespace WallstopStudios.DxState.State.Machine
         public IReadOnlyList<TransitionExecutionContext<T>> TransitionHistory => _transitionHistory;
 
         public int TransitionHistoryCapacity => _transitionHistory.Capacity;
+
+        public int PendingTransitionQueueDepth => _pendingTransitions.Count;
+
+        public int MaxPendingTransitionQueueDepth => _maxPendingTransitionQueueDepth;
+
+        public float AveragePendingTransitionQueueDepth
+        {
+            get
+            {
+                if (_pendingQueueSamples == 0)
+                {
+                    return 0f;
+                }
+
+                return (float)_pendingQueueTotal / _pendingQueueSamples;
+            }
+        }
+
+        public void ResetPendingTransitionQueueMetrics()
+        {
+            _maxPendingTransitionQueueDepth = 0;
+            _pendingQueueSamples = 0;
+            _pendingQueueTotal = 0;
+            _lastPendingTransitionQueueDepth = -1;
+        }
 #if DXSTATE_PROFILING
         public static bool ProfilingEnabled { get; set; }
 #endif
@@ -234,14 +267,62 @@ namespace WallstopStudios.DxState.State.Machine
             return state != null;
         }
 
-        public void CopyTransitionHistory(List<TransitionExecutionContext<T>> buffer)
+        public void CopyTransitionHistory(
+            List<TransitionExecutionContext<T>> buffer,
+            int maxCount = -1
+        )
         {
             if (buffer == null)
             {
                 throw new ArgumentNullException(nameof(buffer));
             }
 
-            _transitionHistory.CopyTo(buffer);
+            _transitionHistory.CopyTo(buffer, maxCount);
+        }
+
+        public void CopyStates(List<T> buffer)
+        {
+            if (buffer == null)
+            {
+                throw new ArgumentNullException(nameof(buffer));
+            }
+
+            buffer.Clear();
+            foreach (KeyValuePair<T, List<Transition<T>>> entry in _states)
+            {
+                buffer.Add(entry.Key);
+            }
+        }
+
+        public void CopyTransitionsForState(T state, List<Transition<T>> buffer)
+        {
+            if (buffer == null)
+            {
+                throw new ArgumentNullException(nameof(buffer));
+            }
+
+            buffer.Clear();
+            if (_states.TryGetValue(state, out List<Transition<T>> transitions))
+            {
+                for (int i = 0; i < transitions.Count; i++)
+                {
+                    buffer.Add(transitions[i]);
+                }
+            }
+        }
+
+        public void CopyGlobalTransitions(List<Transition<T>> buffer)
+        {
+            if (buffer == null)
+            {
+                throw new ArgumentNullException(nameof(buffer));
+            }
+
+            buffer.Clear();
+            for (int i = 0; i < _globalTransitions.Count; i++)
+            {
+                buffer.Add(_globalTransitions[i]);
+            }
         }
 
         public void CopyActiveRegions(List<IStateRegion> buffer)
@@ -252,15 +333,30 @@ namespace WallstopStudios.DxState.State.Machine
             }
 
             buffer.Clear();
-            IReadOnlyList<IStateRegion> regions = _activeRegions;
-            if (regions == null)
+            if (_activeRegions == null)
             {
                 return;
             }
 
-            for (int i = 0; i < regions.Count; i++)
+            for (int i = 0; i < _activeRegions.Count; i++)
             {
-                buffer.Add(regions[i]);
+                buffer.Add(_activeRegions[i]);
+            }
+        }
+
+        public void BuildTransitionGraph(IDictionary<T, List<Transition<T>>> destination)
+        {
+            if (destination == null)
+            {
+                throw new ArgumentNullException(nameof(destination));
+            }
+
+            destination.Clear();
+            foreach (KeyValuePair<T, List<Transition<T>>> entry in _states)
+            {
+                List<Transition<T>> snapshot = new List<Transition<T>>(entry.Value.Count);
+                snapshot.AddRange(entry.Value);
+                destination[entry.Key] = snapshot;
             }
         }
 
@@ -290,7 +386,10 @@ namespace WallstopStudios.DxState.State.Machine
             TransitionContext? overrideContext = null
         )
         {
-            TransitionContext resolvedContext = ResolveTransitionContext(transition, overrideContext);
+            TransitionContext resolvedContext = ResolveTransitionContext(
+                transition,
+                overrideContext
+            );
             EnqueueTransition(newState, transition, resolvedContext);
         }
 
@@ -530,6 +629,14 @@ namespace WallstopStudios.DxState.State.Machine
                 depth = 0;
             }
 
+            if (depth > _maxPendingTransitionQueueDepth)
+            {
+                _maxPendingTransitionQueueDepth = depth;
+            }
+
+            _pendingQueueSamples++;
+            _pendingQueueTotal += depth;
+
             if (depth == _lastPendingTransitionQueueDepth)
             {
                 return;
@@ -595,8 +702,8 @@ namespace WallstopStudios.DxState.State.Machine
             _activeHierarchicalState = hierarchicalState;
             _activeRegions = regions != null && regions.Count > 0 ? regions : null;
             _shouldUpdateActiveRegions = hierarchicalState.ShouldUpdateRegions;
-            _activeRegionCoordinator = hierarchicalState.RegionCoordinator
-                ?? DefaultStateRegionCoordinator.Instance;
+            _activeRegionCoordinator =
+                hierarchicalState.RegionCoordinator ?? DefaultStateRegionCoordinator.Instance;
 
             if (_activeRegions == null)
             {
@@ -616,8 +723,8 @@ namespace WallstopStudios.DxState.State.Machine
             IReadOnlyList<IStateRegion> regions = _activeRegions;
             if (regions != null)
             {
-                IStateRegionCoordinator coordinator = _activeRegionCoordinator
-                    ?? DefaultStateRegionCoordinator.Instance;
+                IStateRegionCoordinator coordinator =
+                    _activeRegionCoordinator ?? DefaultStateRegionCoordinator.Instance;
                 coordinator.DeactivateRegions(regions, context);
             }
 
@@ -648,12 +755,14 @@ namespace WallstopStudios.DxState.State.Machine
                 return;
             }
 
-            IStateRegionCoordinator coordinator = _activeRegionCoordinator
-                ?? DefaultStateRegionCoordinator.Instance;
+            IStateRegionCoordinator coordinator =
+                _activeRegionCoordinator ?? DefaultStateRegionCoordinator.Instance;
             coordinator.UpdateRegions(regions);
         }
 
-        private sealed class TransitionHistoryBuffer : IReadOnlyList<TransitionExecutionContext<T>>, IDisposable
+        private sealed class TransitionHistoryBuffer
+            : IReadOnlyList<TransitionExecutionContext<T>>,
+                IDisposable
         {
             private TransitionExecutionContext<T>[] _buffer;
             private int _count;
@@ -724,10 +833,22 @@ namespace WallstopStudios.DxState.State.Machine
                 _startIndex = (_startIndex + 1) % Capacity;
             }
 
-            public void CopyTo(List<TransitionExecutionContext<T>> buffer)
+            public void CopyTo(List<TransitionExecutionContext<T>> buffer, int maxCount)
             {
                 buffer.Clear();
-                for (int i = 0; i < _count; i++)
+                int recordsToCopy = _count;
+                if (maxCount >= 0 && maxCount < recordsToCopy)
+                {
+                    recordsToCopy = maxCount;
+                }
+
+                int start = _count - recordsToCopy;
+                if (start < 0)
+                {
+                    start = 0;
+                }
+
+                for (int i = start; i < _count; i++)
                 {
                     buffer.Add(this[i]);
                 }

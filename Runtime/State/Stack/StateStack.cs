@@ -229,14 +229,42 @@ namespace WallstopStudios.DxState.State.Stack
             return _transitionWaiter.AsValueTask();
         }
 
-        public void CopyTransitionHistory(List<StateStackTransitionRecord> buffer)
+        public void CopyTransitionHistory(List<StateStackTransitionRecord> buffer, int maxCount = -1)
         {
             if (buffer == null)
             {
                 throw new ArgumentNullException(nameof(buffer));
             }
 
-            _transitionHistory.CopyTo(buffer);
+            _transitionHistory.CopyTo(buffer, maxCount);
+        }
+
+        public void CopyStack(List<IState> buffer)
+        {
+            if (buffer == null)
+            {
+                throw new ArgumentNullException(nameof(buffer));
+            }
+
+            buffer.Clear();
+            for (int i = 0; i < _stack.Count; i++)
+            {
+                buffer.Add(_stack[i]);
+            }
+        }
+
+        public void CopyRegisteredStates(List<IState> buffer)
+        {
+            if (buffer == null)
+            {
+                throw new ArgumentNullException(nameof(buffer));
+            }
+
+            buffer.Clear();
+            foreach (KeyValuePair<string, IState> entry in _statesByName)
+            {
+                buffer.Add(entry.Value);
+            }
         }
 
         public bool TryRegister(IState state, bool force = false)
@@ -1546,10 +1574,22 @@ namespace WallstopStudios.DxState.State.Stack
                 _startIndex = (_startIndex + 1) % Capacity;
             }
 
-            public void CopyTo(List<StateStackTransitionRecord> buffer)
+        public void CopyTo(List<StateStackTransitionRecord> buffer, int maxCount)
             {
                 buffer.Clear();
-                for (int i = 0; i < _count; i++)
+                int recordsToCopy = _count;
+                if (maxCount >= 0 && maxCount < recordsToCopy)
+                {
+                    recordsToCopy = maxCount;
+                }
+
+                int start = _count - recordsToCopy;
+                if (start < 0)
+                {
+                    start = 0;
+                }
+
+                for (int i = start; i < _count; i++)
                 {
                     buffer.Add(this[i]);
                 }

@@ -123,7 +123,8 @@ namespace WallstopStudios.DxState.State.Stack.Components
                 }
             }
 
-            IReadOnlyDictionary<string, IState> registeredStates = _stateStackManager.RegisteredStates;
+            IReadOnlyDictionary<string, IState> registeredStates =
+                _stateStackManager.RegisteredStates;
 
             for (int i = 0; i < _registrationScratch.Count; i++)
             {
