@@ -181,6 +181,11 @@ namespace WallstopStudios.DxState.State.Stack.Components
             _autoAssignInitialState = value;
         }
 
+        internal void SetPushInitialStateOnStart(bool value)
+        {
+            _pushInitialStateOnStart = value;
+        }
+
         private void CollectCandidate(GameState candidate)
         {
             if (candidate == null)

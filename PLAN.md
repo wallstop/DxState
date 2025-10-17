@@ -5,6 +5,17 @@
 - [x] Authoring surfaces: StateGraph editor with validation/search, live manager controls, diagnostics overlay integration, GraphView window with runtime highlighting.
 
 ## High Priority
+
+4. [ ] Expand runtime introspection APIs for tooling integration.
+5. [ ] Add runtime regression coverage around logging, messaging, and bootstrapper flows.
+   - Create playmode test for bootstrapper honoring `_pushInitialStateOnStart` disabled path, asserting stack remains idle after several frames.
+   - Create playmode test validating `_additionalStates` plus child discovery pushing initial state when configured.
+   - Exercise bootstrapper duplicate-registration path with `_forceRegisterStates` true to ensure no errors are logged and states register.
+   - Add playmode test for logging profile capturing progress-only logs and disabling logging via `SetLoggingProfile(null)` mid-sequence.
+   - Add playmode messaging test covering messaging emission when `MessagingComponent.emitMessagesWhenDisabled` is true and GameObject is disabled.
+   - Add pooled transition stress test (rent/release) to assert metrics peak and active counts under load.
+   - Add diagnostics coverage for `StateStackDiagnostics.Events` ordering and logging toggle behaviour.
+
 1. [x] Enrich GraphView authoring and debugging for complex state machines.
    - Add edge-level metadata (transition cause, guard summary, context flags) and tooltips sourced from `TransitionContext` to mirror non-linear logic. (Completed – GraphView persistently stores labeled transitions with editable metadata.)
    - Support multi-edge branching: allow linking a node to multiple successors with labeled connections, including drag-to-create edges that inject new transition definitions back into the asset. (Completed – GraphView edges create persistent metadata entries and render editable labels/tooltips.)

@@ -19,6 +19,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
         public float Progress => _stateStack.Progress;
         public IReadOnlyDictionary<string, IState> RegisteredStates => _stateStack.RegisteredStates;
         public IReadOnlyList<IState> Stack => _stateStack.Stack;
+        internal StateStack StateStack => _stateStack;
 
         public StateStackDiagnostics Diagnostics => _diagnostics;
 

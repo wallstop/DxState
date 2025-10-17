@@ -22,5 +22,12 @@ namespace WallstopStudios.DxState.State.Stack.Diagnostics
         public bool LogProgress => _logProgress;
 
         public string LogCategory => _logCategory;
+
+        internal void Configure(bool logTransitions, bool logProgress, string category)
+        {
+            _logTransitions = logTransitions;
+            _logProgress = logProgress;
+            _logCategory = category;
+        }
     }
 }
