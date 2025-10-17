@@ -7,6 +7,7 @@ namespace WallstopStudios.DxState.Editor.State
     using UnityEngine;
     using WallstopStudios.DxState.State.Machine;
     using WallstopStudios.DxState.State.Stack.Diagnostics;
+    using WallstopStudios.DxState.State.Machine.Component;
 
     public sealed class StateMachineDiagnosticsWindow : EditorWindow
     {
@@ -62,6 +63,8 @@ namespace WallstopStudios.DxState.Editor.State
         {
             EnsureEntries();
 
+            DrawPoolMetrics();
+
             EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
             EditorGUILayout.LabelField(
                 Settings.AutoRefresh ? "Auto Refresh: On" : "Auto Refresh: Off",
@@ -103,6 +106,37 @@ namespace WallstopStudios.DxState.Editor.State
             }
 
             EditorGUILayout.EndScrollView();
+        }
+
+        private void DrawPoolMetrics()
+        {
+            PooledTransitionRuleMetrics metrics = PooledTransitionRule.GetMetrics();
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField(
+                "Pooled Transition Rules",
+                EditorStyles.boldLabel
+            );
+            using (new EditorGUI.IndentLevelScope())
+            {
+                EditorGUILayout.LabelField(
+                    "Active",
+                    metrics.ActiveCount.ToString()
+                );
+                EditorGUILayout.LabelField(
+                    "Peak Active",
+                    metrics.PeakActiveCount.ToString()
+                );
+                EditorGUILayout.LabelField(
+                    "Total Rentals",
+                    metrics.TotalRentals.ToString()
+                );
+                EditorGUILayout.LabelField(
+                    "Total Releases",
+                    metrics.TotalReleases.ToString()
+                );
+            }
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.Space();
         }
 
         private void DrawEntry(StateMachineDiagnosticsEntry entry)
