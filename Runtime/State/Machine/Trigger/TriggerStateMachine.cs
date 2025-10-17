@@ -2,8 +2,9 @@ namespace WallstopStudios.DxState.State.Machine.Trigger
 {
     using System;
     using System.Collections.Generic;
+    using WallstopStudios.DxState.Pooling;
 
-    public sealed class TriggerStateMachine<TState, TTrigger>
+    public sealed class TriggerStateMachine<TState, TTrigger> : IDisposable
     {
         public TState CurrentStateId => _currentStateId;
 
@@ -13,7 +14,7 @@ namespace WallstopStudios.DxState.State.Machine.Trigger
 
         private readonly Dictionary<TState, ITriggerState<TState, TTrigger>> _statesById;
         private readonly Dictionary<TState, Dictionary<TTrigger, TriggerStateTransition<TState, TTrigger>>> _transitions;
-        private readonly Queue<PendingTransition> _pendingTransitions;
+        private readonly PooledQueue<PendingTransition> _pendingTransitions;
 
         private ITriggerState<TState, TTrigger> _currentState;
         private TState _currentStateId;
@@ -39,7 +40,7 @@ namespace WallstopStudios.DxState.State.Machine.Trigger
 
             _statesById = new Dictionary<TState, ITriggerState<TState, TTrigger>>();
             _transitions = new Dictionary<TState, Dictionary<TTrigger, TriggerStateTransition<TState, TTrigger>>>();
-            _pendingTransitions = new Queue<PendingTransition>();
+            _pendingTransitions = new PooledQueue<PendingTransition>();
 
             foreach (ITriggerState<TState, TTrigger> triggerState in states)
             {
@@ -251,6 +252,11 @@ namespace WallstopStudios.DxState.State.Machine.Trigger
             }
 
             return new TransitionContext(defaultCause, context.Flags);
+        }
+
+        public void Dispose()
+        {
+            _pendingTransitions.Dispose();
         }
 
         private readonly struct PendingTransition

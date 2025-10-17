@@ -215,6 +215,12 @@ DxState is Wallstop Studios' state management package for Unity 2021.3, combinin
 - Utility helpers such as `AwaitWithProgress` now support cancellation tokens while driving progress updates via a lightweight, pooled driver.
 - Snapshot and restore stacks in automation by calling `StateStackSnapshot.Capture(stack)` and `snapshot.RestoreAsync(stack)`; pair with `StateMachine<T>.TransitionHistory` when you need deterministic replays.
 
+## Performance Tips
+
+- Internal transition queues and history buffers rent arrays from the Wallstop pools. Dispose stacks/machines (or rely on `StateStackManager`) once they are no longer needed so buffers return to the pool promptly.
+- Avoid holding references to arrays returned by diagnostics helpers—copy the data you need, then release the buffer to keep pooling effective.
+- Use the `DXSTATE_PROFILING` toggles to compare timings before/after enabling pooling or other optimizations.
+
 ## State Machine Authoring
 
 - Reach for `StateMachineBuilder<TState>` whenever you want to materialise transition graphs without manually building lists. The builder preserves unique transitions, honours the validation inside `StateMachine<T>`, and keeps the graph readable for tooling.

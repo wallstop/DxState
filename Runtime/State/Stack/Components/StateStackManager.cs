@@ -115,6 +115,7 @@ namespace WallstopStudios.DxState.State.Stack.Components
             _diagnostics = null;
             TeardownLoggingProfile();
             UnsubscribeFromStateStackEvents();
+            _stateStack.Dispose();
             base.OnDestroy();
         }
 

@@ -56,7 +56,7 @@ namespace WallstopStudios.DxState.Editor.State
         private UnityEngine.Object _currentInspectorTarget;
         private int _selectedTransitionIndex = -1;
         private StateStackGraphView.StateEdge _selectedEdge;
-        private string _selectedStateDetails;
+        private string _selectedStateDetails = string.Empty;
         private StateGraphValidationReport _latestValidationReport;
 
         public static void Open(StateGraphAsset graphAsset, string stackName)

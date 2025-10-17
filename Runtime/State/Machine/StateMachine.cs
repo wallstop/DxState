@@ -7,12 +7,16 @@ namespace WallstopStudios.DxState.State.Machine
 #if DXSTATE_PROFILING
     using Unity.Profiling;
 #endif
+    using WallstopStudios.DxState.Pooling;
+#if DXSTATE_PROFILING
+    using Unity.Profiling;
+#endif
 
-    public sealed class StateMachine<T>
+    public sealed class StateMachine<T> : IDisposable
     {
         private readonly Dictionary<T, List<Transition<T>>> _states;
         private readonly List<Transition<T>> _globalTransitions;
-        private readonly Queue<PendingTransition> _pendingTransitions;
+        private readonly PooledQueue<PendingTransition> _pendingTransitions;
         private readonly TransitionHistoryBuffer _transitionHistory;
 #if DXSTATE_PROFILING
         private static readonly ProfilerMarker _transitionMarker = new ProfilerMarker("DxState.StateMachine.Transition");
@@ -32,6 +36,7 @@ namespace WallstopStudios.DxState.State.Machine
         private bool _shouldUpdateActiveRegions;
         private T _previousState;
         private bool _hasPreviousState;
+        private bool _disposed;
 
         private const int DefaultTransitionHistoryCapacity = 32;
 
@@ -52,7 +57,7 @@ namespace WallstopStudios.DxState.State.Machine
 
             _states = new Dictionary<T, List<Transition<T>>>();
             _globalTransitions = new List<Transition<T>>();
-            _pendingTransitions = new Queue<PendingTransition>();
+            _pendingTransitions = new PooledQueue<PendingTransition>();
             _transitionHistory = new TransitionHistoryBuffer(DefaultTransitionHistoryCapacity);
             HashSet<T> discoveredStates = new HashSet<T>();
             HashSet<Transition<T>> uniqueTransitions = new HashSet<Transition<T>>();
@@ -428,6 +433,29 @@ namespace WallstopStudios.DxState.State.Machine
             }
         }
 
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        private void Dispose(bool disposing)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            _pendingTransitions.Dispose();
+            _transitionHistory.Dispose();
+        }
+
+        ~StateMachine()
+        {
+            Dispose(false);
+        }
+
         private static TransitionContext ResolveTransitionContext(
             Transition<T> transition,
             TransitionContext? overrideContext
@@ -568,16 +596,25 @@ namespace WallstopStudios.DxState.State.Machine
             coordinator.UpdateRegions(regions);
         }
 
-        private sealed class TransitionHistoryBuffer : IReadOnlyList<TransitionExecutionContext<T>>
+        private sealed class TransitionHistoryBuffer : IReadOnlyList<TransitionExecutionContext<T>>, IDisposable
         {
-            private readonly TransitionExecutionContext<T>[] _buffer;
+            private TransitionExecutionContext<T>[] _buffer;
             private int _count;
             private int _startIndex;
+            private bool _disposed;
 
             public TransitionHistoryBuffer(int capacity)
             {
                 Capacity = capacity <= 0 ? DefaultTransitionHistoryCapacity : capacity;
-                _buffer = new TransitionExecutionContext<T>[Capacity];
+                Capacity = Math.Max(1, Capacity);
+                _buffer = WallstopArrayPool<TransitionExecutionContext<T>>.Rent(
+                    Capacity,
+                    clear: false
+                );
+                if (_buffer.Length < Capacity)
+                {
+                    _buffer = new TransitionExecutionContext<T>[Capacity];
+                }
                 _count = 0;
                 _startIndex = 0;
             }
@@ -638,6 +675,26 @@ namespace WallstopStudios.DxState.State.Machine
                 {
                     buffer.Add(this[i]);
                 }
+            }
+
+            public void Dispose()
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                _disposed = true;
+                if (_buffer != null)
+                {
+                    WallstopArrayPool<TransitionExecutionContext<T>>.Return(
+                        _buffer,
+                        clear: true
+                    );
+                    _buffer = null;
+                }
+                _count = 0;
+                _startIndex = 0;
             }
         }
     }

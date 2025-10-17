@@ -10,6 +10,7 @@ namespace WallstopStudios.DxState.State.Stack
 #endif
     using UnityHelpers.Core.Extension;
     using WallstopStudios.DxState.State.Stack.Internal;
+    using WallstopStudios.DxState.Pooling;
 
     public enum StateTransitionPhase
     {
@@ -45,7 +46,7 @@ namespace WallstopStudios.DxState.State.Stack
         public string StateName { get; }
     }
 
-    public sealed class StateStack
+    public sealed class StateStack : IDisposable
     {
         public bool IsTransitioning => _isTransitioning;
 
@@ -134,7 +135,7 @@ namespace WallstopStudios.DxState.State.Stack
         private readonly StateTransitionProgressReporter _masterProgress;
         private static readonly IProgress<float> _noOpProgress = new NullProgress();
         private TransitionCompletionSource _transitionWaiter;
-        private readonly Queue<QueuedTransition> _transitionQueue = new Queue<QueuedTransition>();
+        private readonly PooledQueue<QueuedTransition> _transitionQueue;
         private readonly List<IState> _removalPreviousBuffer = new List<IState>();
         private readonly List<IState> _removalNextBuffer = new List<IState>();
         private readonly TransitionHistoryBuffer _transitionHistory;
@@ -157,6 +158,32 @@ namespace WallstopStudios.DxState.State.Stack
             _masterProgress = new StateTransitionProgressReporter(this);
             _mainThreadId = Thread.CurrentThread.ManagedThreadId;
             _transitionHistory = new TransitionHistoryBuffer(DefaultTransitionHistoryCapacity);
+            _transitionQueue = new PooledQueue<QueuedTransition>();
+        }
+
+        private bool _disposed;
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        private void Dispose(bool disposing)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            _transitionQueue.Dispose();
+            _transitionHistory.Dispose();
+        }
+
+        ~StateStack()
+        {
+            Dispose(false);
         }
 
         private void RecordTransitionProgress(float value)
@@ -1440,16 +1467,25 @@ namespace WallstopStudios.DxState.State.Stack
             public bool RaisedEvents { get; }
         }
 
-        private sealed class TransitionHistoryBuffer : IReadOnlyList<StateStackTransitionRecord>
+        private sealed class TransitionHistoryBuffer : IReadOnlyList<StateStackTransitionRecord>, IDisposable
         {
-            private readonly StateStackTransitionRecord[] _buffer;
+            private StateStackTransitionRecord[] _buffer;
             private int _count;
             private int _startIndex;
+            private bool _disposed;
 
             public TransitionHistoryBuffer(int capacity)
             {
                 Capacity = capacity <= 0 ? DefaultTransitionHistoryCapacity : capacity;
-                _buffer = new StateStackTransitionRecord[Capacity];
+                Capacity = Math.Max(1, Capacity);
+                _buffer = WallstopArrayPool<StateStackTransitionRecord>.Rent(
+                    Capacity,
+                    clear: false
+                );
+                if (_buffer.Length < Capacity)
+                {
+                    _buffer = new StateStackTransitionRecord[Capacity];
+                }
                 _count = 0;
                 _startIndex = 0;
             }
@@ -1510,6 +1546,23 @@ namespace WallstopStudios.DxState.State.Stack
             System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()
             {
                 return GetEnumerator();
+            }
+
+            public void Dispose()
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                _disposed = true;
+                if (_buffer != null)
+                {
+                    WallstopArrayPool<StateStackTransitionRecord>.Return(_buffer, clear: true);
+                    _buffer = null;
+                }
+                _count = 0;
+                _startIndex = 0;
             }
         }
 

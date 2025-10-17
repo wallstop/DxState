@@ -34,10 +34,10 @@
 
 ## Medium Priority
 5. [ ] Extend state machine performance options.
-   - Wallstop buffer integration
-     - Swap transient collections in `StateMachine<T>` and `StateStack` over to `WallstopArrayPool`/`WallstopFastArrayPool` where appropriate (transition queues, history buffers, temporary lists).
+   - Wallstop buffer integration (In Progress – transition queues and history buffers now rent from Wallstop pools; evaluate remaining hot paths.)
+     - Swap transient collections in `StateMachine<T>` and `StateStack` over to `WallstopArrayPool`/`WallstopFastArrayPool` where appropriate (transition queues, history buffers, temporary lists). (In Progress – queues/history updated; assess additional caches.)
      - Introduce scoped helpers that rent/release buffers during transition execution and update loops without changing the public API.
-     - Document pool expectations (e.g. lifetime, thread restrictions) so users understand the trade-offs.
+     - Document pool expectations (e.g. lifetime, thread restrictions) so users understand the trade-offs. (Completed – README and authoring docs now cover disposal/usage guidance.)
    - Transition rule pooling
      - Provide a lightweight `PooledTransitionRule` wrapper that captures delegates or structs and recycles them via `WallstopArrayPool`.
      - Add opt-in factory methods (`StateMachineBuilder<T>.RentTransition(...)`) so heavy projects can limit allocations while preserving compatibility with existing code.
