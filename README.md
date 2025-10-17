@@ -208,6 +208,7 @@ DxState is Wallstop Studios' state management package for Unity 2021.3, combinin
 - Use the [Live Diagnostics Walkthrough](Documentation/Guides/LiveDiagnosticsWalkthrough.md) to configure overlays, snapshots, and automation hooks for runtime monitoring.
 - Start with the [State Stack Bootstrap Sample Walkthrough](Documentation/Guides/StateStackBootstrap.md) to drop a ready-to-use stack prefab into any scene.
 - Explore the [Hierarchical State Graph Sample Walkthrough](Documentation/Guides/HFSMSampleWalkthrough.md) to inspect the included multi-stack scene and graph asset.
+- Drive Animator flows with the [Animator Parameter Adapter](Documentation/Guides/AnimatorParameterAdapter.md).
 - Open **Window ▸ Wallstop Studios ▸ DxState ▸ State Stack Debugger** to monitor stacks in a dedicated editor window, push new states by name, and inspect diagnostics without selecting the manager object.
 - Drop the `StateStackDiagnosticsOverlay` MonoBehaviour on the same object as `StateStackManager` (included in the sample prefab) to toggle an in-game overlay that lists the active stack and recent events (default hotkey: `F9`).
   Use the toolbar buttons to cycle between floating/docked presets or lock the overlay to avoid accidental drags, pause/step through diagnostics snapshots, pin states you care about, switch to the timeline tab to visualize recent transitions as a sparkline, and apply event-type filters to focus on actionable entries.
@@ -234,7 +235,8 @@ DxState is Wallstop Studios' state management package for Unity 2021.3, combinin
 - `StateMachine<T>` now exposes `TransitionHistory`, `ActiveRegions`, and helper methods such as `CopyTransitionHistory` and `TryGetActiveHierarchicalState`, making it easy to build diagnostics overlays or replay tests without instrumenting the machine.
 - Designers can build the same graphs visually with `StateGraphAsset` (Assets ▸ Create ▸ Wallstop Studios ▸ DxState ▸ State Graph). Each stack definition records a name, ordered `IState` references, and which entry is active by default. Call `StateGraphAsset.BuildGraph()` at runtime to obtain `StateStackConfiguration` instances and apply them to your stacks. The State Graph view now supports multiple labeled transitions between nodes with editable causes/flags and tooltips.
   The State Graph editor window exposes the same transition metadata, allowing you to author labels, tooltips, and transition causes directly alongside the state list.
-- The State Graph view now supports multiple labelled transitions per pair of states; select an edge to edit its label, tooltip, cause, and flags, or drag between nodes to create new metadata-backed transitions.
+    - The State Graph view now supports multiple labelled transitions per pair of states; select an edge to edit its label, tooltip, cause, and flags, or drag between nodes to create new metadata-backed transitions.
+    - Selecting a state now surfaces connected Animator Controllers and Timeline assets directly in the inspector sidebar for quick cross-referencing.
 - The edit-mode suites `StateMachineBuilderTests`, `StateComponentTests`, and `StateStackDiagnosticsTests` cover builder usage, component gating, and deferred queue reporting.
 
 ## Time and Timescale

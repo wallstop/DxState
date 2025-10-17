@@ -9,6 +9,8 @@ namespace WallstopStudios.DxState.Editor.State
     using UnityEditor.Experimental.GraphView;
     using UnityEditor.UIElements;
     using UnityEngine;
+    using UnityEngine.Playables;
+    using UnityEngine.Timeline;
     using UnityEngine.UIElements;
     using WallstopStudios.DxState.Editor.State.Validation;
     using WallstopStudios.DxState.State.Machine;
@@ -54,6 +56,7 @@ namespace WallstopStudios.DxState.Editor.State
         private UnityEngine.Object _currentInspectorTarget;
         private int _selectedTransitionIndex = -1;
         private StateStackGraphView.StateEdge _selectedEdge;
+        private string _selectedStateDetails;
         private StateGraphValidationReport _latestValidationReport;
 
         public static void Open(StateGraphAsset graphAsset, string stackName)
@@ -254,6 +257,7 @@ namespace WallstopStudios.DxState.Editor.State
             _selectedEdge = null;
             if (ReferenceEquals(_currentInspectorTarget, stateObject))
             {
+                _selectedStateDetails = ResolveStateDetails(stateObject);
                 return;
             }
 
@@ -269,6 +273,7 @@ namespace WallstopStudios.DxState.Editor.State
 
             if (stateObject == null)
             {
+                _selectedStateDetails = string.Empty;
                 return;
             }
 
@@ -285,11 +290,14 @@ namespace WallstopStudios.DxState.Editor.State
             {
                 _inspectorGuiContainer.MarkDirtyRepaint();
             }
+
+            _selectedStateDetails = ResolveStateDetails(stateObject);
         }
 
         private void HandleTransitionSelection(StateStackGraphView.StateEdge edge)
         {
             _selectedEdge = edge;
+            _selectedStateDetails = string.Empty;
             if (edge == null || !edge.HasMetadata)
             {
                 _selectedTransitionIndex = -1;
@@ -349,6 +357,7 @@ namespace WallstopStudios.DxState.Editor.State
             }
 
             _currentInspectorTarget = null;
+            _selectedStateDetails = string.Empty;
 
             if (_inspectorGuiContainer != null)
             {
@@ -365,6 +374,12 @@ namespace WallstopStudios.DxState.Editor.State
         {
             if (_currentInspectorEditor != null && _currentInspectorTarget != null)
             {
+                if (!string.IsNullOrEmpty(_selectedStateDetails))
+                {
+                    EditorGUILayout.HelpBox(_selectedStateDetails, MessageType.None);
+                    EditorGUILayout.Space(4f);
+                }
+
                 _currentInspectorEditor.OnInspectorGUI();
                 return;
             }
@@ -380,6 +395,79 @@ namespace WallstopStudios.DxState.Editor.State
                 "Select a state node or transition to inspect details.",
                 MessageType.Info
             );
+        }
+
+        private string ResolveStateDetails(UnityEngine.Object stateObject)
+        {
+            if (stateObject == null)
+            {
+                return string.Empty;
+            }
+
+            List<string> lines = new List<string>();
+
+            if (stateObject is Component component)
+            {
+                lines.Add(component.GetType().Name);
+                AppendExternalReferences(component.gameObject, lines);
+            }
+            else if (stateObject is GameObject gameObject)
+            {
+                lines.Add("GameObject");
+                AppendExternalReferences(gameObject, lines);
+            }
+            else if (stateObject is ScriptableObject scriptable)
+            {
+                lines.Add(scriptable.GetType().Name);
+                AppendScriptableReferences(scriptable, lines);
+            }
+
+            return lines.Count > 0 ? string.Join("\n", lines) : string.Empty;
+        }
+
+        private static void AppendExternalReferences(GameObject gameObject, List<string> lines)
+        {
+            if (gameObject == null)
+            {
+                return;
+            }
+
+            int initialCount = lines.Count;
+            Animator animator = gameObject.GetComponent<Animator>();
+            if (animator != null && animator.runtimeAnimatorController != null)
+            {
+                lines.Add($"Animator Controller: {animator.runtimeAnimatorController.name}");
+            }
+
+            PlayableDirector director = gameObject.GetComponent<PlayableDirector>();
+            if (director != null && director.playableAsset != null)
+            {
+                lines.Add($"Timeline Asset: {director.playableAsset.name}");
+            }
+
+            if (lines.Count == initialCount)
+            {
+                lines.Add("No Animator/Timeline references detected.");
+            }
+        }
+
+        private static void AppendScriptableReferences(ScriptableObject asset, List<string> lines)
+        {
+            int initialCount = lines.Count;
+
+            if (asset is RuntimeAnimatorController)
+            {
+                lines.Add("Animator Controller asset.");
+            }
+            else if (asset is TimelineAsset)
+            {
+                lines.Add("Timeline asset.");
+            }
+
+            if (lines.Count == initialCount)
+            {
+                lines.Add("No external references detected.");
+            }
         }
 
         private void DrawTransitionInspector()
