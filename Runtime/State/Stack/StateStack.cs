@@ -5,6 +5,9 @@ namespace WallstopStudios.DxState.State.Stack
     using System.Threading;
     using System.Threading.Tasks;
     using UnityEngine;
+#if DXSTATE_PROFILING
+    using Unity.Profiling;
+#endif
     using UnityHelpers.Core.Extension;
     using WallstopStudios.DxState.State.Stack.Internal;
 
@@ -63,6 +66,9 @@ namespace WallstopStudios.DxState.State.Stack
         public IReadOnlyDictionary<string, IState> RegisteredStates => _statesByName;
         public IReadOnlyList<IState> Stack => _stack;
         public IReadOnlyList<StateStackTransitionRecord> TransitionHistory => _transitionHistory;
+#if DXSTATE_PROFILING
+        public static bool ProfilingEnabled { get; set; }
+#endif
 
         public event Action<IState, IState> OnStatePushed;
         public event Action<IState, IState> OnStatePopped;
@@ -132,6 +138,10 @@ namespace WallstopStudios.DxState.State.Stack
         private readonly List<IState> _removalPreviousBuffer = new List<IState>();
         private readonly List<IState> _removalNextBuffer = new List<IState>();
         private readonly TransitionHistoryBuffer _transitionHistory;
+#if DXSTATE_PROFILING
+        private static readonly ProfilerMarker _transitionMarker = new ProfilerMarker("DxState.StateStack.Transition");
+        private static readonly ProfilerMarker _updateMarker = new ProfilerMarker("DxState.StateStack.Update");
+#endif
 
         private int _currentDeferredTransitionCount;
         private int _lifetimeDeferredTransitionCount;
@@ -962,6 +972,22 @@ namespace WallstopStudios.DxState.State.Stack
                 return;
             }
 
+#if DXSTATE_PROFILING
+            if (ProfilingEnabled)
+            {
+                using (_updateMarker.Auto())
+                {
+                    PerformUpdateCore(tickMode);
+                }
+                return;
+            }
+#endif
+
+            PerformUpdateCore(tickMode);
+        }
+
+        private void PerformUpdateCore(TickMode tickMode)
+        {
             if (tickMode == TickMode.None)
             {
                 return;
@@ -1066,6 +1092,22 @@ namespace WallstopStudios.DxState.State.Stack
         }
 
         private async ValueTask ExecuteTransitionInternal(TransitionRequest request)
+        {
+#if DXSTATE_PROFILING
+            if (ProfilingEnabled)
+            {
+                using (_transitionMarker.Auto())
+                {
+                    await ExecuteTransitionInternalCore(request);
+                    return;
+                }
+            }
+#endif
+
+            await ExecuteTransitionInternalCore(request);
+        }
+
+        private async ValueTask ExecuteTransitionInternalCore(TransitionRequest request)
         {
             if (_isTransitioning)
             {

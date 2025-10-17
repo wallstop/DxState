@@ -4,6 +4,9 @@ namespace WallstopStudios.DxState.State.Machine
     using System.Collections.Generic;
     using Component;
     using UnityHelpers.Core.Extension;
+#if DXSTATE_PROFILING
+    using Unity.Profiling;
+#endif
 
     public sealed class StateMachine<T>
     {
@@ -11,6 +14,10 @@ namespace WallstopStudios.DxState.State.Machine
         private readonly List<Transition<T>> _globalTransitions;
         private readonly Queue<PendingTransition> _pendingTransitions;
         private readonly TransitionHistoryBuffer _transitionHistory;
+#if DXSTATE_PROFILING
+        private static readonly ProfilerMarker _transitionMarker = new ProfilerMarker("DxState.StateMachine.Transition");
+        private static readonly ProfilerMarker _updateMarker = new ProfilerMarker("DxState.StateMachine.Update");
+#endif
 
         private TransitionExecutionContext<T> _latestTransitionContext;
 
@@ -145,11 +152,30 @@ namespace WallstopStudios.DxState.State.Machine
         public IReadOnlyList<TransitionExecutionContext<T>> TransitionHistory => _transitionHistory;
 
         public int TransitionHistoryCapacity => _transitionHistory.Capacity;
+#if DXSTATE_PROFILING
+        public static bool ProfilingEnabled { get; set; }
+#endif
 
         public event Action<TransitionExecutionContext<T>> TransitionExecuted;
         public event Action<T, T, TransitionContext> TransitionDeferred;
 
         public void Update()
+        {
+#if DXSTATE_PROFILING
+            if (ProfilingEnabled)
+            {
+                using (_updateMarker.Auto())
+                {
+                    UpdateCore();
+                }
+                return;
+            }
+#endif
+
+            UpdateCore();
+        }
+
+        private void UpdateCore()
         {
             if (TryExecuteGlobalTransitions())
             {
@@ -307,6 +333,22 @@ namespace WallstopStudios.DxState.State.Machine
         }
 
         private void ExecutePendingTransition(PendingTransition pending)
+        {
+#if DXSTATE_PROFILING
+            if (ProfilingEnabled)
+            {
+                using (_transitionMarker.Auto())
+                {
+                    ExecutePendingTransitionCore(pending);
+                }
+                return;
+            }
+#endif
+
+            ExecutePendingTransitionCore(pending);
+        }
+
+        private void ExecutePendingTransitionCore(PendingTransition pending)
         {
             _transitionDepth++;
             try

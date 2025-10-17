@@ -27,6 +27,8 @@ Each implementation of `IState` (and `GameState`) must respect the following lif
 - Keep transition metadata (labels, tooltips, causes, and flags) up to date. This ensures diagnostics and exported JSON remain diff-friendly and understandable in reviews.
 - Use placeholder states (generated via templates) during prototyping, then replace them with concrete implementations before shipping.
 - Leverage `StateStack.TransitionHistory` (or `CopyTransitionHistory`) and `StateMachine<T>.TransitionHistory`/`ActiveRegions` when building analytical tooling; these APIs expose recent transitions and active hierarchical regions without wiring new events.
+- Capture and restore stacks in tests via `StateStackSnapshot.Capture(...)` and `RestoreAsync(...)` to reproduce complex hierarchies or replay save states.
+- When deeper measurements are required, define `DXSTATE_PROFILING` and set `StateStack.ProfilingEnabled` / `StateMachine<T>.ProfilingEnabled` at runtime to wrap transitions and updates in Unity profiler markers.
 
 ## Testing and Validation
 

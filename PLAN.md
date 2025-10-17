@@ -36,11 +36,11 @@
 5. [ ] Extend state machine performance options.
    - Offer Burst/DOTS-friendly state machine variants (struct-based, jobified evaluation) and bridge them to existing APIs.
    - Introduce pooling for frequently created transitions/rules to minimise GC churn in high frequency updates.
-   - Benchmark and expose profiling hooks (Unity Profiler markers) around `StateStack` operations.
+   - Benchmark and expose profiling hooks (Unity Profiler markers) around `StateStack` operations. (Completed – optional `DXSTATE_PROFILING` markers wrap transition/update paths with opt-in toggles.)
 
 6. [ ] Sample content and documentation.
    - Ship sample scenes demonstrating HFSM usage, GraphView authoring workflow, and overlay diagnostics in action.
-   - Publish step-by-step guides for common tasks (building hierarchical graphs, wiring overlays, debugging live transitions) and link them from the README/editor window.
+   - Publish step-by-step guides for common tasks (building hierarchical graphs, wiring overlays, debugging live transitions) and link them from the README/editor window. (Completed – new guides under `Documentation/Guides/` are linked from the README.)
 
 ## Low Priority
 7. [ ] Integrate with complementary state paradigms.

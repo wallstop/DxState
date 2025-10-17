@@ -199,14 +199,18 @@ DxState is Wallstop Studios' state management package for Unity 2021.3, combinin
 - Open **Window ▸ Wallstop Studios ▸ DxState ▸ State Machine Diagnostics** to inspect registered machines, transition causes, per-state metrics, and recent events; adjust defaults under **Project Settings ▸ Wallstop Studios ▸ DxState ▸ Diagnostics**.
 - In the Editor, the custom `StateStackManager` inspector surfaces the live stack, registered states (with push/flatten controls), diagnostics, and a one-click clear button while in play mode.
 - Subscribe to `StateGraphViewWindow.GraphAssetChanged` when building editor extensions or CI hooks that react to authoring edits.
+- Enable the `DXSTATE_PROFILING` scripting define and toggle `StateStack.ProfilingEnabled` / `StateMachine<T>.ProfilingEnabled` to wrap transitions and updates with Unity profiler markers when you need deep instrumentation.
 
 ## Further Reading
 
 - Review [State Authoring Best Practices](Documentation/StateAuthoring.md) for guidance on choosing between ScriptableObject and MonoBehaviour states, meeting lifecycle contracts, and wiring dependencies safely.
+- Follow the [Building Hierarchical Graphs](Documentation/Guides/BuildingHierarchicalGraphs.md) walkthrough to author complex stacks in the State Graph view.
+- Use the [Live Diagnostics Walkthrough](Documentation/Guides/LiveDiagnosticsWalkthrough.md) to configure overlays, snapshots, and automation hooks for runtime monitoring.
 - Open **Window ▸ Wallstop Studios ▸ DxState ▸ State Stack Debugger** to monitor stacks in a dedicated editor window, push new states by name, and inspect diagnostics without selecting the manager object.
 - Drop the `StateStackDiagnosticsOverlay` MonoBehaviour on the same object as `StateStackManager` (included in the sample prefab) to toggle an in-game overlay that lists the active stack and recent events (default hotkey: `F9`).
   Use the toolbar buttons to cycle between floating/docked presets or lock the overlay to avoid accidental drags, pause/step through diagnostics snapshots, pin states you care about, switch to the timeline tab to visualize recent transitions as a sparkline, and apply event-type filters to focus on actionable entries.
 - Utility helpers such as `AwaitWithProgress` now support cancellation tokens while driving progress updates via a lightweight, pooled driver.
+- Snapshot and restore stacks in automation by calling `StateStackSnapshot.Capture(stack)` and `snapshot.RestoreAsync(stack)`; pair with `StateMachine<T>.TransitionHistory` when you need deterministic replays.
 
 ## State Machine Authoring
 
