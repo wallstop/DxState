@@ -1,22 +1,48 @@
 # Repository Guidelines
 
 ## Design Philosophy
-Default experiences must be simple, predictable, and easy to wire up in plain Unity scenes. All advanced behaviors (scene orchestration, nested groups, messaging fan-out) should remain optional layers on top of the core `StateStack`. Favor obvious APIs, descriptive method names, and low-ceremony setup—extended/custom integrations can live in separate helpers so new contributors see the minimal path first.
+Default experiences must be simple, predictable, and easy to wire up in plain Unity scenes. Ship the minimal `StateStack` path first; scene orchestration, nested groups, and DxMessaging broadcasts stay optional layers. Favor descriptive APIs, zero-reflection patterns, and low-ceremony setup so newcomers can follow the code without consulting docs.
 
 ## Project Structure & Module Organization
-DxState ships as a Unity 2021.3 package. Runtime code lives under `Runtime/`, which is compiled via `Runtime/WallstopStudios.DxState.asmdef`. `Runtime/State/Stack` implements the stack-driven state machine (core types: `StateStack`, `StateGroup`, `SceneState`, plus transition messages). `Runtime/State/Machine` holds component-facing glue (`StateMachine`, `StateComponent`, transitions, contexts). `Runtime/Extensions` exposes Unity helpers that integrate the stack into MonoBehaviours, while `DxMessageAwareSingleton.cs` and `SerializedMessageAwareComponent.cs` connect to `com.wallstop-studios.dxmessaging`. Keep editor utilities, tests, or samples in sibling Unity packages (`Editor/`, `Tests/`) so the runtime assembly stays clean.
+- `Runtime/State/Stack`: Stack primitives (`StateStack`, `StateGroup`, `SceneState`, tick modes, Dx messages).
+- `Runtime/State/Machine`: Component-driven state machine helpers (`StateComponent`, `StateMachine<T>`, transitions, contexts).
+- `Runtime/Extensions`: Unity helpers (async progress, MonoBehaviour utilities).
+- `Runtime/DxMessageAwareSingleton.cs` & `SerializedMessageAwareComponent.cs`: Bridges into `com.wallstop-studios.dxmessaging`.
+- Keep editor tooling, samples, and tests in sibling packages (`Editor/`, `Tests/`, `Samples~/`) to avoid bloating the runtime assembly.
 
 ## Build, Test, and Development Commands
-- `dotnet tool restore` — installs the pinned local tools described in `.config/dotnet-tools.json`.
-- `dotnet tool run csharpier format Runtime/**/*.cs` — formats touched C# files; run before every commit.
-- `pre-commit run --all-files` — exercises the tool restore + formatter the same way CI does.
-- `"<UnityEditorPath>/Unity.exe" -batchmode -projectPath "<host-project>" -runTests -testPlatform editmode -assemblyNames WallstopStudios.DxState -logFile "-"` — executes Unity EditMode tests that reference this package; swap `editmode` for `playmode` when needed.
+- `dotnet tool restore` — installs the pinned local tools defined in `.config/dotnet-tools.json`.
+- `dotnet tool run csharpier format Runtime/**/*.cs` — format C# before every commit (pre-commit calls this automatically).
+- `pre-commit run --all-files` — exercises hooks exactly how CI runs them.
+- Unity tests (once added): `"<UnityEditorPath>/Unity.exe" -batchmode -projectPath "<host>" -runTests -testPlatform EditMode -assemblyNames WallstopStudios.DxState -logFile "-"`.
 
 ## Coding Style & Naming Conventions
-Formatting is enforced by CSharpier plus `.editorconfig`: spaces only, 4-space indentation for `.cs`, CRLF line endings, UTF-8 BOM. Prefer explicit types over `var`. Interfaces use the `ITypeName` prefix, events are PascalCase, Unity serialized fields stay camelCase. Always wrap blocks in braces and keep using directives inside the namespace. When adding APIs, match the existing namespace depth (`WallstopStudios.DxState.*`) so asmdef references stay stable.
+- `.editorconfig` + CSharpier govern style: 4 spaces for C#, 2 for JSON/YAML/asmdefs, CRLF endings, UTF-8 BOM. No tabs.
+- Prefer explicit types instead of `var`; interfaces prefixed `I`, type parameters `TName`, events `OnEventName`, Unity serialized fields camelCase.
+- Always wrap blocks in braces, keep `using` statements inside namespaces, and never use `#region`.
+- Avoid nullable reference types, underscores in method names, and reflection unless absolutely necessary (document any unavoidable cases).
+
+## Reflection & API Access
+- Rely on explicit APIs instead of runtime reflection; use `internal` + `InternalsVisibleTo` when tests or editors need deeper access.
+- Centralize identifier strings (e.g., state names) via `nameof` or constants; only serialize raw strings when Unity requires it.
+- If reflection is unavoidable (Unity serialization hooks, third-party glue), keep it quarantined with clear comments explaining the constraint.
 
 ## Testing Guidelines
-The repo currently ships without automated tests, so add Unity Test Framework suites under `Tests/EditMode` or `Tests/PlayMode` inside the consuming project. Name files after the subject (`StateStackTests.cs`, `SceneTransitionModeTests.cs`) and keep methods descriptive (`Pop_RemovesTopState`). Mock `IDxMessenger` interactions with lightweight fakes. Aim for coverage on stack mutation paths (push/pop/flatten) and message dispatch so regressions surface quickly. Capture expected messaging with assertions on `TransitionStartMessage` / `TransitionCompleteMessage`. Include the Unity batchmode command output in PR discussions when adding or changing behavior.
+- Target Unity Test Framework (NUnit attributes) and mirror runtime folders for future `Tests/EditMode` and `Tests/PlayMode`.
+- Name files `*Tests.cs` and methods with behavior-focused descriptions (`PopAsync_RemovesTopState`), avoiding `async Task` tests—prefer `IEnumerator` for `[UnityTest]`.
+- Keep tests deterministic and fast; fake `IDxMessenger` interactions rather than spinning up the full DxMessaging stack.
+- Include Unity batchmode logs/screenshots in PRs when behavior changes to prove the simple/default flows still work.
 
 ## Commit & Pull Request Guidelines
-Follow the existing history: short, imperative commit subjects (`Add pre-commit config`, `Bump actions/setup-node to 5 (#1)`), optionally referencing the tool or dependency. Squash noisy WIP commits before opening a PR. Every PR should summarize the change, link the tracked issue, note any DX messaging protocol updates, and attach Unity test logs or screenshots for behavioral/UI changes. Highlight breaking API adjustments and update `package.json` + `CHANGELOG` (once added) in the same PR.
+- Use short, imperative commits (`Fix StateStack flatten progress`, `Bump CSharpier to 1.2.1`) and squash noisy WIP history.
+- PRs must describe the change, link issues, call out DX messaging or API surface updates, and attach relevant test output or GIFs.
+- Update `package.json` + future `CHANGELOG.md` whenever the runtime API or version changes; keep docs and samples in sync.
+
+## Security & Configuration Tips
+- Keep `.meta` files committed, but never commit `Library/`, `obj/`, or secrets. Unity target version is 2021.3—verify asmdef references when adding namespaces.
+- Dependabot runs daily for GitHub Actions, npm, and .NET tools; review and merge its PRs promptly.
+- CI formatting uses `dotnet tool run csharpier -- check .`; ensure local hooks run cleanly before pushing.
+
+## Agent-Specific Notes
+- Scope edits to the relevant folder (mostly `Runtime/`); keep the default developer experience easy to grok and document any added complexity.
+- When extending functionality, provide a basic sample or doc snippet showing how to use it without advanced setup.
