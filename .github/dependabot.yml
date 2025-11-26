@@ -3,7 +3,25 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "daily"
+    assignees:
+      - wallstop
+    reviewers:
+      - wallstop
+
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    assignees:
+      - wallstop
+    reviewers:
+      - wallstop
+
+  - package-ecosystem: "nuget"
+    directory: "/.config"
+    schedule:
+      interval: "daily"
     assignees:
       - wallstop
     reviewers:
