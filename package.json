@@ -4,7 +4,7 @@
   "displayName": "DxState",
   "description": "Simple State Management for Unity",
   "dependencies": {
-    "com.wallstop-studios.unity-helpers": "3.2.0",
+    "com.wallstop-studios.unity-helpers": "3.2.1",
     "com.wallstop-studios.dxmessaging": "2.2.0"
   },
   "unity": "2021.3",
