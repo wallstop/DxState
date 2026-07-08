@@ -5,7 +5,7 @@
   "description": "Simple State Management for Unity",
   "dependencies": {
     "com.wallstop-studios.unity-helpers": "3.5.0",
-    "com.wallstop-studios.dxmessaging": "3.0.1"
+    "com.wallstop-studios.dxmessaging": "3.2.0"
   },
   "unity": "2021.3",
   "keywords": [
